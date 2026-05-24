@@ -53,7 +53,9 @@ make-vo.py        → Edge TTS streams vo.mp3 + vo-words.json (word-level timing
 make-captions.py  → captions.ass (karaoke) + captions.srt
 make-music.sh     → procedural ambient pad music.mp3 (or mode: file / none)
 plan-scenes.py    → resolve the scene sequence → scene-plan.json
-build-scenes.sh   → render each scene by type; pin to `duration:` (normalize-clip.py) if set
+make-auth.mjs     → (if `auth:` set) log in once → auth.json (authed scenes reuse it)
+build-scenes.sh   → render each scene by type; pin to `duration:` (normalize-clip.py) if set; cached
+autofit.py        → (if `scenes.autofit`) adjust speedup so video holds the voiceover
 assemble.sh       → normalize + speedup + crossfade N scenes → final-rough.mp4
 mix-final.sh      → ⚠ timing gate (check-timing.py) → voice + music sidechain-ducked → final-with-audio.mp4
 burn-captions.sh  → ffmpeg subtitles filter → final-with-captions.mp4
@@ -246,6 +248,8 @@ demo-video/
 │   ├── normalize-clip.py       ← P0-3 pin a scene to exact duration
 │   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes
 │   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker gate
+│   ├── autofit.py              ← P0-1 opt-in: fit speedup to voiceover length
+│   ├── make-auth.mjs           ← P2-1 log in once → auth.json (storageState)
 │   ├── record-frame.mjs
 │   ├── record-endcards.mjs
 │   ├── record-graph.mjs

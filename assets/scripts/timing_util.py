@@ -63,6 +63,24 @@ def predict_video_seconds(raw_durations, speedup=1.0, crossfade=0.6):
     return sum(raws) / speedup - (n - 1) * crossfade
 
 
+def solve_speedup(sigma_raw, vo_target, n, crossfade=0.6, clamp_lo=0.8, clamp_hi=1.4):
+    """Auto-fit (P0-1, opt-in): the playback speedup that makes the video just hold
+    the narration. Returns (speedup, fits).
+
+    From video = sigma_raw/speedup - (n-1)*crossfade >= vo_target:
+        speedup* = sigma_raw / (vo_target + (n-1)*crossfade)   (max speedup that still fits)
+    Clamp to [clamp_lo, clamp_hi]. `fits` is False only when even the slowest allowed
+    speed can't hold the VO (vo too long) -> caller should warn, not silently truncate.
+    """
+    denom = vo_target + (n - 1) * crossfade
+    if denom <= 0:
+        return clamp_hi, True
+    star = sigma_raw / denom
+    clamped = max(clamp_lo, min(clamp_hi, star))
+    fits = clamped <= star + 1e-9  # using clamped speed, is video >= vo_target?
+    return clamped, fits
+
+
 def estimate_vo_seconds(voiceover, wpm=115):
     """Estimate speech-end time WITHOUT running TTS (for the dry-run plan).
 

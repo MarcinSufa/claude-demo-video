@@ -58,6 +58,29 @@ class PredictVideoSeconds(unittest.TestCase):
         self.assertAlmostEqual(v, 10.0, places=3)
 
 
+class SolveSpeedup(unittest.TestCase):
+    # autofit (P0-1, opt-in): pick the speedup that makes video >= vo_target.
+    # video = sum(raw)/speedup - (N-1)*crossfade ; speedup* = sum(raw)/(vo_target+(N-1)*xf)
+    def test_normal_case_in_clamp(self):
+        sp, fits = timing_util.solve_speedup(51.44, vo_target=45.8, n=4, crossfade=0.6)
+        self.assertTrue(fits)
+        self.assertAlmostEqual(sp, 51.44 / (45.8 + 3 * 0.6), places=3)
+        self.assertGreaterEqual(sp, 0.8)
+        self.assertLessEqual(sp, 1.4)
+
+    def test_footage_much_longer_clamps_high_still_fits(self):
+        # VO short vs scenes -> ideal speedup > 1.4; clamp to 1.4, video longer but VO not cut
+        sp, fits = timing_util.solve_speedup(100.0, vo_target=20.0, n=2, crossfade=0.6)
+        self.assertEqual(sp, 1.4)
+        self.assertTrue(fits)
+
+    def test_vo_too_long_cannot_fit(self):
+        # VO longer than scenes even at slowest -> can't fit; clamp low, fits=False (warn)
+        sp, fits = timing_util.solve_speedup(20.0, vo_target=40.0, n=2, crossfade=0.6)
+        self.assertEqual(sp, 0.8)
+        self.assertFalse(fits)
+
+
 class EstimateVoSeconds(unittest.TestCase):
     def test_word_count_over_wpm_plus_internal_pauses(self):
         # 5 words @115wpm = 5/115*60 = 2.6087s; internal pauses exclude the trailing one.

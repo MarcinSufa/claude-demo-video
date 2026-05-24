@@ -87,6 +87,8 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                 "actions": sc.get("actions", []),
                 # P2-2: warm dev-server routes before recording (avoids "Rendering..." frame)
                 "warmup": should_warmup(sc["url"], sc.get("warmup")),
+                # P2-1: reuse the saved login session (storageState from the auth block)
+                "auth": bool(sc.get("auth", False)),
             }
         elif t == "html_mockup":
             # Render a local HTML via the same browser engine, served by the http server

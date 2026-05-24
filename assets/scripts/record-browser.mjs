@@ -96,13 +96,19 @@ async function glideTo(page, selector) {
 console.log(`Launching Chromium for ${scene.url}`);
 const browser = await chromium.launch({ headless: true });
 
+// P2-1: reuse the saved login session for authed scenes (make-auth.mjs wrote auth.json).
+const storageState = (scene.auth && existsSync('auth.json')) ? 'auth.json' : undefined;
+if (scene.auth && !storageState) {
+  console.warn('  scene wants auth but auth.json is missing — recording unauthenticated');
+}
+
 // P2-2: warm the route FIRST in a throwaway (non-recording) context. Dev servers
 // (Next etc.) compile routes on first hit, so without this the recorded pass can
 // catch a "Rendering..." / compile overlay. recordVideo starts at context creation,
 // so the warmup MUST be a separate context or its frames land in the tape.
 if (scene.warmup) {
   console.log('  warming route (non-recording pass)...');
-  const warm = await browser.newContext({ viewport: { width: W, height: H } });
+  const warm = await browser.newContext({ viewport: { width: W, height: H }, storageState });
   const wp = await warm.newPage();
   await wp.goto(scene.url, { waitUntil: 'networkidle' }).catch(() => {});
   await wp.waitForTimeout(500);
@@ -113,6 +119,7 @@ const context = await browser.newContext({
   viewport: { width: W, height: H },
   deviceScaleFactor: scene.deviceScaleFactor ?? 1,
   recordVideo: { dir: VID_DIR, size: { width: W, height: H } },
+  storageState,
 });
 // P2-3: paint the palette bg before first paint so an html_mockup that forgets an
 // inline <html> background never records as a white flash.

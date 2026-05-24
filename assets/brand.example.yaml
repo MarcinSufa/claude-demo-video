@@ -79,6 +79,18 @@ voice:
   #   ExoVault: "Exo Vault"        # force a space/break
   #   kubectl: "kube control"      # expand jargon
 
+# ─── AUTH (optional) ───────────────────────────────────────────────────
+# Log in ONCE; scenes with `auth: true` reuse the session (no login UI on camera).
+# Runs the actions below, saves the Playwright session, and authed browser_capture
+# scenes start already logged in at their target URL.
+# auth:
+#   login_url: "http://localhost:3000/login"
+#   actions:
+#     - { fill: { selector: "#email", text: "demo@yourapp.com" } }
+#     - { fill: { selector: "#password", text: "demo-password" } }
+#     - { click: "button[type=submit]" }
+#   wait_for: "**/dashboard"        # URL glob OR a selector that confirms login landed
+
 # ─── MUSIC ───────────────────────────────────────────────────────────────
 music:
   mode: "procedural"               # "procedural" | "file" | "none"
@@ -111,6 +123,9 @@ backdrop:
 scenes:
   speedup: 1.20                    # 1.0 = realtime, 1.30 = faster
   crossfade_seconds: 0.6           # transition duration between scenes
+  # autofit: true                  # opt-in: auto-adjust speedup so the video holds the
+                                   # voiceover (clamped 0.8-1.4; warns if it can't fit).
+                                   # Run `/demo-video plan` to preview length either way.
 
   # ── HOW MANY SCENES? Three ways, most-explicit wins ──────────────────
   #
@@ -147,6 +162,7 @@ scenes:
     - type: browser_capture
       url: "http://localhost:3000/dashboard"   # real app, or https://yoursite.com
       cursor: true
+      auth: true               # reuse the login session from the `auth:` block above
       warmup: true             # warm the route first (default: on for localhost) so a
                                # cold dev-server compile isn't captured as "Rendering..."
       settle_ms: 1200

@@ -111,6 +111,38 @@ Dev servers (Next etc.) compile a route on first hit, so a cold capture can catc
 pass first — default **on** for `localhost`/`127.0.0.1`, **off** for public sites.
 Override per scene with `warmup: true|false`.
 
+### Authenticated apps (`auth:` + `auth: true`)
+
+Each `browser_capture` runs in its own browser context, so an authenticated app would
+otherwise need to log in inside every scene. Define a top-level `auth:` block — the build
+logs in **once** (via `make-auth.mjs`), saves the session, and any scene with `auth: true`
+starts already logged in with no login UI on camera:
+
+```yaml
+auth:
+  login_url: "http://localhost:3000/login"
+  actions:
+    - { fill: { selector: "#email", text: "demo@yourapp.com" } }
+    - { fill: { selector: "#password", text: "demo-password" } }
+    - { click: "button[type=submit]" }
+  wait_for: "**/dashboard"        # URL glob OR a selector confirming login landed
+
+scenes:
+  sequence:
+    - { type: browser_capture, url: "http://localhost:3000/orders", auth: true }
+```
+
+Cookie/JWT logins work out of the box; full OAuth-redirect flows may still need an
+on-camera login. (Don't commit real credentials — use a demo/test account.)
+
+### Auto-fitting length to the voiceover (`scenes.autofit`)
+
+Set `scenes.autofit: true` and the build adjusts `speedup` after capture so the video just
+holds the narration (`video ≥ last-spoken-word + 1s`), clamped to 0.8–1.4×. If the VO is too
+long to fit even at the slowest allowed speed, it warns and leaves `speedup` alone — the
+mix step still **fails** rather than silently truncating. Off by default; pin scene
+`duration`s for fully deterministic timing instead.
+
 ### Pinning scene length (`duration:`) — deterministic alignment
 
 `browser_capture` and VHS clip lengths jitter run-to-run, which makes voiceover↔video

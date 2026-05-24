@@ -41,7 +41,7 @@ python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyam
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 echo "[1/8] Compiling brand.yaml → $BUILD/ ..."
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
@@ -91,7 +91,15 @@ fi
 echo "[2/8] Voiceover (Edge TTS)...";   python make-vo.py
 echo "[3/8] Captions...";               python make-captions.py
 [ -f music.mp3 ] || { echo "[4/8] Music..."; bash make-music.sh; }
+# P2-1: log in once if an auth block is configured (authed scenes reuse the session)
+if [ "$(python -c "import json;print(bool(json.load(open('config.json')).get('auth',{}).get('login_url')))")" = "True" ]; then
+  echo "[5/8] Auth login (storageState)..."; node make-auth.mjs
+fi
 echo "[5/8] Recording scenes...";       DEMO_NO_CACHE="$NO_CACHE" DEMO_ONLY="$ONLY" bash build-scenes.sh
+# P0-1 (opt-in): fit playback speed to the voiceover length
+if [ "$(python -c "import json;print(json.load(open('config.json')).get('scenes',{}).get('autofit',False))")" = "True" ]; then
+  echo "  autofit: fitting speed to voiceover..."; python autofit.py
+fi
 echo "[6/8] Assembling crossfade...";   bash assemble.sh
 echo "[7/8] Mixing audio + captions..."; bash mix-final.sh; bash burn-captions.sh
 echo "[8/8] Terminal-on-desk composite..."; node record-frame.mjs
