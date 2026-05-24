@@ -146,6 +146,8 @@ When invoked, follow this sequence:
    - Copy `assets/package.example.json` → `package.json` (so `pnpm install` lands
      Playwright in *this* folder, not a parent — without a local manifest pnpm walks
      up and installs into the wrong `node_modules`). Optionally set `name` to `<project>-demo-video`.
+   - Copy `assets/mockup.example.html` → `mockups/example.html` (starter for `html_mockup`
+     scenes — demo unbuilt features without touching the real codebase)
    - Run a quick interactive interview (3-5 questions): product name, URL, voice gender/tone, what each scene should show
    - Fill in `brand.yaml` based on answers
    - Print: "Run `pnpm install && pnpm exec playwright install chromium`, edit `brand.yaml`, then `/demo-video plan` and `/demo-video build`."
@@ -208,7 +210,9 @@ These were discovered the hard way building the reference implementation. The bu
 
 | Gotcha | Fix |
 |---|---|
-| **HTML pages record as WHITE flashes** at start because Playwright captures pre-CSS frames | (a) Inline `style="background:#0a0705"` on `<html>`. (b) `-ss 0.5` trim in ffmpeg conversion. Both required. |
+| **HTML pages record as WHITE flashes** at start because Playwright captures pre-CSS frames | (a) Inline `style="background:#0a0705"` on `<html>`. (b) `-ss` trim in ffmpeg conversion. For `html_mockup` scenes the recorder now ALSO injects the palette bg before first paint automatically (P2-3), so a mockup that forgets the inline bg won't flash. |
+| **First capture of a cold dev-server route shows "Rendering…"** (Next compiles on first hit) | `browser_capture` warms the route in a separate non-recording context before recording (P2-2). Default on for `localhost`, off for public sites; override per-scene with `warmup: true|false`. |
+| **Brand fonts don't load / wrong font on end card** | The Google Fonts `<link>` is generated from `typography.{display,body,mono,tagline}` (P1-3). Google `css2` is strict — an unsupported axis 400s the whole request — so `apply-brand.py` keeps a per-family axis table (`FONT_SPECS`); unknown families load regular-only and print a warning. Add new families there. |
 | **Audio truncates video** to voice length (~45s) instead of full 50s, causing white tail | `apad` on voice + `duration=first` on amix in `mix-final.sh`. Never use `-shortest` for the final mux. |
 | **record-graph.mjs picks endcards.webm alphabetically** when both exist | Delete `graph.webm` and `graph.mp4` at start of script. Filter webm list by mtime, not name. |
 | **VHS terminal pre-CSS shows white** during VHS startup | Use bash here-doc to print Vellum theme + clear screen before any content prints |

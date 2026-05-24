@@ -98,7 +98,18 @@ ffmpeg normalizes it (1920×1080, 30fps, speedup) and folds it into the crossfad
   duration: 6
   actions: [ { scroll: 300 } ]         # optional Playwright actions
 ```
-Same engine as the built-in `graph`/`endcards` scenes.
+Same engine as the built-in `graph`/`endcards` scenes. Use this to demo a feature the
+real app doesn't have yet **without adding a throwaway view to your codebase**. Start
+from `mockups/example.html` (scaffolded by `init`). The recorder injects your
+`palette.bg` before first paint, so a mockup that forgets an inline background won't
+record as a white flash.
+
+### Warming up real routes (`browser_capture`)
+
+Dev servers (Next etc.) compile a route on first hit, so a cold capture can catch a
+"Rendering…" overlay. `browser_capture` warms the route in a separate (non-recording)
+pass first — default **on** for `localhost`/`127.0.0.1`, **off** for public sites.
+Override per scene with `warmup: true|false`.
 
 ### Pinning scene length (`duration:`) — deterministic alignment
 

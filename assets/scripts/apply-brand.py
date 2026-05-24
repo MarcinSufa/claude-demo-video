@@ -30,6 +30,61 @@ def hex_to_ansi(hex_color):
     return f"{r};{g};{b}"
 
 
+# Google Fonts css2 is STRICT: requesting an axis a family lacks (e.g. `ital` on Geist,
+# which has no italic) returns HTTP 400 and loads NOTHING. So map each known family to a
+# SAFE axis spec. Display serifs keep `ital` (the wordmark renders italic). Unknown
+# families fall back to no axis (regular only) — never 400s — and are reported so the
+# author can add them here or supply axes.
+FONT_SPECS = {
+    # serif / display (italic kept for the end-card wordmark)
+    "Newsreader": "ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400",
+    "Fraunces": "ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300;1,9..144,400",
+    "Instrument Serif": "ital@0;1",
+    "Playfair Display": "ital,wght@0,400;0,500;0,600;1,400;1,500",
+    "Lora": "ital,wght@0,400;0,500;0,600;1,400",
+    "Cormorant Garamond": "ital,wght@0,400;0,500;1,400",
+    "EB Garamond": "ital,wght@0,400;0,500;1,400",
+    "Spectral": "ital,wght@0,300;0,400;0,500;1,400",
+    # sans (Geist has NO italic — must not request it)
+    "Geist": "wght@300;400;500;600;700",
+    "Inter": "ital,wght@0,300;0,400;0,500;0,600;1,400",
+    "Instrument Sans": "ital,wght@0,400;0,500;0,600;1,400",
+    "Space Grotesk": "wght@300;400;500;700",
+    "DM Sans": "ital,opsz,wght@0,9..40,400;0,9..40,500;1,9..40,400",
+    # mono
+    "JetBrains Mono": "ital,wght@0,300;0,400;0,500;0,700;1,400",
+    "Geist Mono": "wght@300;400;500",
+    "IBM Plex Mono": "ital,wght@0,400;0,500;1,400",
+    "Space Mono": "ital,wght@0,400;0,700;1,400",
+    "Roboto Mono": "ital,wght@0,300;0,400;0,500;1,400",
+    "Fira Code": "wght@300;400;500;700",
+    "DM Mono": "ital,wght@0,400;0,500;1,400",
+}
+
+
+def build_google_fonts_link(families):
+    """Build the css2 stylesheet URL for `families`. Returns (url, unknown_set).
+
+    Dedupes, drops empties, maps known families to safe axis specs, and falls back to
+    a no-axis request (regular only) for unknown families so the request never 400s.
+    """
+    seen = []
+    for fam in families:
+        if fam and fam not in seen:
+            seen.append(fam)
+    parts, unknown = [], set()
+    for fam in seen:
+        plus = fam.replace(" ", "+")
+        spec = FONT_SPECS.get(fam)
+        if spec:
+            parts.append(f"family={plus}:{spec}")
+        else:
+            parts.append(f"family={plus}")
+            unknown.add(fam)
+    url = "https://fonts.googleapis.com/css2?" + "&".join(parts) + "&display=swap"
+    return url, unknown
+
+
 def deep_get(d, path, default=None):
     cur = d
     for key in path.split("."):
@@ -110,6 +165,7 @@ def build_substitutions(brand):
         "font_display": typo.get("display", "Newsreader"),
         "font_body": typo.get("body", "Geist"),
         "font_mono": typo.get("mono", "JetBrains Mono"),
+        "font_tagline": typo.get("tagline", "Instrument Serif"),  # end-card italic serif
         # voice
         "voice_id": voice.get("voice_id", "en-US-AndrewNeural"),
         "voice_rate": voice.get("rate", "+0%"),
@@ -130,6 +186,21 @@ def build_substitutions(brand):
     spec_raw = subs["spec_line_dotted"]
     parts = [p.strip() for p in re.split(r"[·•|]", spec_raw) if p.strip()]
     subs["spec_line_html"] = '<span class="dot">·</span>'.join(parts)
+
+    # P1-3: build the Google Fonts <link> from typography (templates reference
+    # {{google_fonts_link}} instead of a hardcoded link, so display/body/mono actually load).
+    fonts_url, fonts_unknown = build_google_fonts_link(
+        [subs["font_display"], subs["font_tagline"], subs["font_body"], subs["font_mono"]]
+    )
+    subs["google_fonts_link"] = (
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        f'<link href="{fonts_url}" rel="stylesheet">'
+    )
+    if fonts_unknown:
+        print(f"WARNING: fonts not in the known axis table (requesting regular weight "
+              f"only — add to FONT_SPECS for italic/weights): {sorted(fonts_unknown)}",
+              file=sys.stderr)
 
     return subs, mem
 

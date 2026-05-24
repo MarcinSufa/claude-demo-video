@@ -13,6 +13,8 @@
 //   "viewport": { "width": 1920, "height": 1080 },
 //   "deviceScaleFactor": 1,
 //   "cursor": true,
+//   "warmup": true,               // P2-2: warm the route first (non-recording pass)
+//   "bg": "#0a0705",              // P2-3: paint this before first paint (anti white-flash)
 //   "settle_ms": 1200,            // wait after load before acting
 //   "tail_ms": 1500,              // hold at end
 //   "actions": [
@@ -93,11 +95,30 @@ async function glideTo(page, selector) {
 
 console.log(`Launching Chromium for ${scene.url}`);
 const browser = await chromium.launch({ headless: true });
+
+// P2-2: warm the route FIRST in a throwaway (non-recording) context. Dev servers
+// (Next etc.) compile routes on first hit, so without this the recorded pass can
+// catch a "Rendering..." / compile overlay. recordVideo starts at context creation,
+// so the warmup MUST be a separate context or its frames land in the tape.
+if (scene.warmup) {
+  console.log('  warming route (non-recording pass)...');
+  const warm = await browser.newContext({ viewport: { width: W, height: H } });
+  const wp = await warm.newPage();
+  await wp.goto(scene.url, { waitUntil: 'networkidle' }).catch(() => {});
+  await wp.waitForTimeout(500);
+  await warm.close();
+}
+
 const context = await browser.newContext({
   viewport: { width: W, height: H },
   deviceScaleFactor: scene.deviceScaleFactor ?? 1,
   recordVideo: { dir: VID_DIR, size: { width: W, height: H } },
 });
+// P2-3: paint the palette bg before first paint so an html_mockup that forgets an
+// inline <html> background never records as a white flash.
+if (scene.bg) {
+  await context.addInitScript((bg) => { document.documentElement.style.background = bg; }, scene.bg);
+}
 if (WANT_CURSOR) await context.addInitScript(CURSOR_JS);
 
 const page = await context.newPage();

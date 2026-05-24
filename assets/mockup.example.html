@@ -1,0 +1,72 @@
+<!doctype html>
+<!--
+  mockup.example.html — starter for an `html_mockup` scene.
+
+  Use this to demo a feature/UI the real app doesn't have yet, WITHOUT adding a
+  throwaway view to your real codebase. Duplicate it per feature into this folder
+  (e.g. mockups/new-pricing.html) and reference it from brand.yaml:
+
+      scenes:
+        sequence:
+          - { type: html_mockup, source: "mockups/new-pricing.html", duration: 6 }
+
+  Edit the :root palette + fonts to match your brand.yaml. The inline background on
+  <html>/<body> below guards against the "white flash" at capture start; the recorder
+  also injects your palette bg automatically, so this is belt-and-suspenders.
+-->
+<html lang="en" style="background:#0a0705">
+<head>
+<meta charset="utf-8" />
+<title>Mockup</title>
+<style>html,body{background:#0a0705 !important;margin:0;}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:     #0a0705;   /* match palette.bg */
+    --fg:     #dcd7cf;   /* palette.fg */
+    --accent: #dbaf71;   /* palette.accent */
+    --rule:   #29231f;   /* palette.rule */
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 1920px; height: 1080px; overflow: hidden;
+    background: var(--bg); color: var(--fg);
+    font-family: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex; flex-direction: column;
+    padding: 80px 96px;
+  }
+  .topbar { display:flex; align-items:center; justify-content:space-between;
+            border-bottom:1px solid var(--rule); padding-bottom:24px; }
+  .brand  { font-family:"Newsreader", Georgia, serif; font-size:34px; letter-spacing:-0.01em; }
+  .brand em { font-style: italic; font-weight: 300; color: var(--accent); }
+  .nav    { font-family:"JetBrains Mono", monospace; font-size:15px; color:#a9a49c; letter-spacing:0.04em; }
+  .stage  { flex:1; display:flex; flex-direction:column; justify-content:center; gap:28px; max-width:1100px; }
+  h1      { font-family:"Newsreader", Georgia, serif; font-weight:400; font-size:84px; line-height:1.04;
+            margin:0; letter-spacing:-0.02em; }
+  h1 .hl  { color: var(--accent); font-style: italic; }
+  p.sub   { font-size:28px; color:#a9a49c; margin:0; max-width:760px; line-height:1.5; }
+  .card   { margin-top:16px; border:1px solid var(--rule); border-radius:14px; padding:32px 36px;
+            background:rgba(255,255,255,0.02); max-width:720px; }
+  .card .k{ font-family:"JetBrains Mono", monospace; font-size:14px; color:var(--accent); letter-spacing:0.06em; }
+  .card .v{ font-size:22px; margin-top:10px; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand"><em>My</em>Product</div>
+    <div class="nav">dashboard · inventory · settings</div>
+  </div>
+  <div class="stage">
+    <h1>The feature you're <span class="hl">about to ship</span>.</h1>
+    <p class="sub">Replace this canvas with the screen you want to demo. It records at
+       1920×1080 like any other scene — captions, voice and the terminal-on-desk frame
+       all apply identically.</p>
+    <div class="card">
+      <div class="k">REAL-TIME INVENTORY</div>
+      <div class="v">1,284 units across 7 warehouses — synced 3s ago.</div>
+    </div>
+  </div>
+</body>
+</html>

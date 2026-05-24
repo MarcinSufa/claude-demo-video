@@ -53,11 +53,14 @@ logo:
   # wordmark_full: "MyProduct"
 
 # ─── TYPOGRAPHY ──────────────────────────────────────────────────────────
-# Use Google Fonts names. Skill loads them automatically via <link>.
+# Use Google Fonts names. The skill builds the <link> from these names AUTOMATICALLY
+# (per-family axes; unknown families load regular-only + warn — add them to FONT_SPECS
+# in apply-brand.py for italics/weights). Changing `display` actually changes the font.
 typography:
   display: "Newsreader"            # end-card wordmark serif
   body: "Geist"                    # UI sans
   mono: "JetBrains Mono"           # terminals + spec line
+  tagline: "Instrument Serif"      # end-card italic tagline serif (defaults shown)
 
 # ─── VOICE ───────────────────────────────────────────────────────────────
 # Edge TTS voices: https://gist.github.com/BettyJJ/17cbaa1de96235a7f5773b8690a20462
@@ -144,6 +147,8 @@ scenes:
     - type: browser_capture
       url: "http://localhost:3000/dashboard"   # real app, or https://yoursite.com
       cursor: true
+      warmup: true             # warm the route first (default: on for localhost) so a
+                               # cold dev-server compile isn't captured as "Rendering..."
       settle_ms: 1200
       tail_ms: 1200
       duration: 7              # optional: pin clip to EXACTLY 7s (raw, pre-speedup).
