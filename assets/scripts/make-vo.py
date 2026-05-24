@@ -18,10 +18,38 @@ if not os.path.exists(CONFIG_PATH):
 with open(CONFIG_PATH, encoding="utf-8") as _f:
     _cfg = json.load(_f)
 
+import re
+
 _voice = _cfg.get("voice", {})
 VOICE = _voice.get("voice_id", "en-US-AndrewNeural")
 RATE = _voice.get("rate", "+0%")
 LEADING_OFFSET_SEC = float(_voice.get("leading_silence", 0.2))
+
+# Pronunciation map: respell brand terms for the TTS voice (e.g. a Polish voice
+# reads "Asistel" as "A-śi-stel"; respell to "Assystel" for English-ish sound).
+# Captions still show the ORIGINAL spelling — we reverse-map the spoken token back.
+PRONOUNCE = {str(k): str(v) for k, v in (_voice.get("pronounce") or {}).items()}
+# reverse: spoken respelling (lowercased) -> original display form
+PRONOUNCE_REV = {v.lower(): k for k, v in PRONOUNCE.items()}
+
+
+def apply_pronounce(text):
+    """Replace whole-word brand terms with their respellings for TTS."""
+    out = text
+    for original, spoken in PRONOUNCE.items():
+        out = re.sub(rf"\b{re.escape(original)}\b", spoken, out)
+    return out
+
+
+def display_word(token):
+    """Map a spoken WordBoundary token back to its original spelling for captions."""
+    # strip trailing punctuation for matching, re-attach after
+    m = re.match(r"^(.*?)([.,!?:;]*)$", token)
+    core, punct = m.group(1), m.group(2)
+    if core.lower() in PRONOUNCE_REV:
+        return PRONOUNCE_REV[core.lower()] + punct
+    return token
+
 
 # voiceover: list of {text, pause_after}
 SCRIPT = [(item["text"], float(item.get("pause_after", 0.5)))
@@ -38,7 +66,8 @@ async def gen_segments():
     segments = []
     for i, (text, pause) in enumerate(SCRIPT):
         path = f"{WORK}/seg_{i:02d}.mp3"
-        comm = edge_tts.Communicate(text, VOICE, rate=RATE, boundary="WordBoundary")
+        spoken = apply_pronounce(text)            # what the TTS voice reads
+        comm = edge_tts.Communicate(spoken, VOICE, rate=RATE, boundary="WordBoundary")
         words = []
         with open(path, "wb") as audio_file:
             async for chunk in comm.stream():
@@ -46,7 +75,7 @@ async def gen_segments():
                     audio_file.write(chunk["data"])
                 elif chunk["type"] == "WordBoundary":
                     words.append({
-                        "text": chunk["text"],
+                        "text": display_word(chunk["text"]),   # caption shows original spelling
                         "offset_sec": chunk["offset"] / 10_000_000,
                         "duration_sec": chunk["duration"] / 10_000_000,
                     })

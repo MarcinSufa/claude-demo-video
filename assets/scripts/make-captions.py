@@ -25,8 +25,15 @@ if os.path.exists(_cfg_path):
 
 BONE = _hex_to_ass_bgr(_pal.get("palette_fg", "#dcd7cf"))      # default text
 BRASS = _hex_to_ass_bgr(_pal.get("palette_accent", "#dbaf71")) # highlighted word
-BG_BOX = _hex_to_ass_bgr(_pal.get("palette_bg", "#0a0705"), alpha="66")  # soft box ~40%
-SHADOW = "&H80000000&"  # black 50% alpha
+# Solid box behind captions (BorderStyle=3). MUST be fully opaque (alpha 00):
+# karaoke \k splits the line into per-word render units, so a semi-transparent box
+# overlaps at the seams and doubles up into ugly darker vertical bands. Full opacity
+# = uniform bar. Box colour = palette_bg, so it BLENDS INTO dark terminal scenes
+# (invisible, text floats) but stands out as a readable bar over light app UI.
+# NOTE: with BorderStyle=3, libass draws the box from OutlineColour (3rd colour),
+# NOT BackColour — so BG_BOX goes in the OutlineColour slot below.
+BG_BOX = _hex_to_ass_bgr(_pal.get("palette_bg", "#0a0705"), alpha="00")
+SHADOW = "&H80000000&"  # black 50% alpha (BackColour/shadow slot; Shadow=0 so unused)
 
 
 def s_to_ass(seconds):
@@ -57,7 +64,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,JetBrains Mono,40,{BRASS},{BONE},{SHADOW},{BG_BOX},0,0,0,0,100,100,0,0,1,2,4,2,80,80,120,1
+Style: Default,JetBrains Mono,40,{BRASS},{BONE},{BG_BOX},{SHADOW},0,0,0,0,100,100,0,0,3,10,0,2,80,80,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

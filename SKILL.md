@@ -162,6 +162,22 @@ When invoked, follow this sequence:
    - Generate a simple `index.html` with embedded `<video>` players for each output
    - Print the trycloudflare URL — user opens on phone to review
 
+## Demo content for features that don't exist yet
+
+If a scene needs UI the real app doesn't have yet (an unbuilt feature, an empty
+route), **do NOT add a view to the real codebase just for the recording** — that
+leaves throwaway cruft in production code. Instead use an **`html_mockup` scene**:
+build a standalone HTML file in `mockups/` (brand palette/fonts), capture that via
+the same Playwright engine as graph/endcards. It never touches the real app and is
+easy to discard. Reserve `browser_capture` for routes that genuinely exist.
+
+## Pronouncing brand names
+
+TTS reads brand names phonetically in its own language — a Polish voice says
+"Asistel" as "A-śi-stel" (like the name *Asia*). When using a non-English `voice_id`
+with an English product name, sanity-check pronunciation and add a `voice.pronounce`
+map in brand.yaml (respell for the voice; captions keep the original spelling).
+
 ## Critical gotchas (must apply, do not skip)
 
 These were discovered the hard way building the reference implementation. The bundled scripts already encode them but if the agent regenerates from scratch, re-apply:
@@ -176,6 +192,7 @@ These were discovered the hard way building the reference implementation. The bu
 | **Edge TTS WordBoundary events don't fire by default** | Pass `boundary="WordBoundary"` to `edge_tts.Communicate(...)` |
 | **Scene crossfade offsets drift** when scene durations change | `assemble.sh` reads actual normalized durations via ffprobe before computing xfade offsets, never hardcodes |
 | **VO timing drifts from scenes** | After every scene-duration change, re-run alignment check: `python -c "..."` script that maps each VO line to its scene. If any line ends up in the wrong scene, adjust `pause_after` values in `brand.yaml` and regenerate VO. |
+| **Karaoke captions wash out on light app UI** (`browser_capture` / `html_mockup` scenes) | Use `BorderStyle=3` opaque box. The box colour goes in the **`OutlineColour` slot** (libass draws the BorderStyle=3 box from OutlineColour, NOT BackColour) and **must be fully opaque (alpha `00`)** — a semi-transparent box overlaps at the per-word `\k` seams and doubles up into ugly darker vertical bands. Set box colour = `palette_bg` so it blends invisibly on dark terminal scenes but reads as a solid bar over light UI. |
 
 ## File map
 

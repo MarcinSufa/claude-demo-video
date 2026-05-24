@@ -68,6 +68,14 @@ voice:
   rate: "+0%"                      # -10% slower, +10% faster
   leading_silence: 0.2             # seconds before first word
 
+  # Fix mispronounced brand/product names. The voice reads the RESPELLING;
+  # captions still show the ORIGINAL. Essential when a non-English voice mangles
+  # an English brand name (e.g. pl-PL voice reads "Asistel" as "A-śi-stel").
+  # pronounce:
+  #   Asistel: "Assystel"          # respell so a Polish voice says it English-ish
+  #   ExoVault: "Exo Vault"        # force a space/break
+  #   kubectl: "kube control"      # expand jargon
+
 # ─── MUSIC ───────────────────────────────────────────────────────────────
 music:
   mode: "procedural"               # "procedural" | "file" | "none"
