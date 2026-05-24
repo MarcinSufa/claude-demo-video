@@ -3,8 +3,16 @@
 # Everything runs inside a flat .build/ working dir (rendered templates + copied
 # scripts), exactly mirroring the proven reference layout. Final video copied to videos/.
 #
-# Run from project root (where brand.yaml lives):  bash scripts/build.sh
+# Usage (run from project root, where brand.yaml lives):
+#   bash scripts/build.sh                 # full build
+#   bash scripts/build.sh --plan          # P3-1 dry run: scene/VO length estimate, no render
+#   bash scripts/build.sh --no-cache      # P0-2: ignore cached scene clips, recapture all
+#   bash scripts/build.sh --only c2       # P0-2: force-recapture scene c2, reuse the rest
 set -euo pipefail
+
+# P3-2: keep non-Latin VO logs (Polish etc.) readable regardless of the OS console codepage.
+export PYTHONIOENCODING=utf-8
+export PYTHONUTF8=1
 
 ROOT="$(pwd)"
 SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"   # .../scripts
@@ -12,54 +20,66 @@ BUILD=".build"
 
 [ -f brand.yaml ] || { echo "Missing brand.yaml — run /demo-video init or copy assets/brand.example.yaml"; exit 1; }
 
-# --plan = P3-1 dry run: resolve scenes + estimate VO length, no TTS/capture/encode.
-PLAN_ONLY=0
-for arg in "$@"; do case "$arg" in --plan) PLAN_ONLY=1;; esac; done
+# ─── Flags ──────────────────────────────────────────────────────────────
+PLAN_ONLY=0; NO_CACHE=0; ONLY=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --plan)            PLAN_ONLY=1 ;;
+    --no-cache|--force) NO_CACHE=1 ;;
+    --only)            shift; ONLY="${1:-}" ;;
+    --only=*)          ONLY="${1#--only=}" ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
 
-# ─── 0. Prerequisites ──────────────────────────────────────────────────
+# ─── 0. Base prerequisites (needed just to compile + resolve the plan) ──
 echo "[0/8] Verifying prerequisites..."
 for cmd in ffmpeg ffprobe python; do command -v $cmd >/dev/null || { echo "Missing: $cmd"; exit 1; }; done
 python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyaml"; exit 1; }
-if [ "$PLAN_ONLY" = "0" ]; then
-  command -v node >/dev/null || { echo "Missing: node"; exit 1; }
-  python -c "import edge_tts" 2>/dev/null || { echo "Missing: pip install --user edge-tts"; exit 1; }
-  command -v vhs >/dev/null || command -v docker >/dev/null || { echo "Missing: VHS (winget install charmbracelet.vhs) or Docker"; exit 1; }
-  [ -d node_modules/playwright ] || { echo "Missing: pnpm add playwright && pnpm exec playwright install chromium"; exit 1; }
-fi
 
-# ─── 1. Compile brand → .build/ ────────────────────────────────────────
+# ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 echo "[1/8] Compiling brand.yaml → $BUILD/ ..."
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-
-# Copy runtime scripts into .build/ so each `cd $(dirname $0)` operates there
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py} "$BUILD/"
-
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
-
-# ─── --plan: dry run (resolve scenes + estimate VO), then exit ──────────
-if [ "$PLAN_ONLY" = "1" ]; then
-  cd "$BUILD"; export DEMO_CONFIG=config.json
-  python plan-scenes.py
-  rc=0; python dry-run-plan.py || rc=$?
-  exit $rc
-fi
-
-# node_modules + backdrop into .build/ (full build only)
-[ -e "$BUILD/node_modules" ] || ln -s "$ROOT/node_modules" "$BUILD/node_modules" 2>/dev/null || cp -r node_modules "$BUILD/node_modules"
-BACKDROP_SRC="$(python -c "import json;print(json.load(open('$BUILD/config.json'))['subs']['backdrop_source'])")"
-if [[ "$BACKDROP_SRC" == http* ]]; then
-  echo "  downloading backdrop..."
-  curl -L -s -o "$BUILD/videos/backdrop.jpg" "$BACKDROP_SRC" || echo "  (backdrop download failed — frame uses bg color)"
-elif [ -f "$BACKDROP_SRC" ]; then
-  cp "$BACKDROP_SRC" "$BUILD/videos/backdrop.jpg"
-elif [ -f "$ROOT/$BACKDROP_SRC" ]; then
-  cp "$ROOT/$BACKDROP_SRC" "$BUILD/videos/backdrop.jpg"
-fi
 
 cd "$BUILD"
 export DEMO_CONFIG=config.json
 
-# Local server for Playwright HTML scenes
+# Resolve the scene plan early (cheap) — drives both --plan and the arc-aware gate.
+python plan-scenes.py
+
+# ─── --plan: dry run (estimate VO + video length), then exit ────────────
+if [ "$PLAN_ONLY" = "1" ]; then
+  rc=0; python dry-run-plan.py || rc=$?
+  exit $rc
+fi
+
+# ─── 0b. Arc-aware prerequisite gate (full build) ───────────────────────
+# Playwright is always needed (end-card / graph / terminal-on-desk composite use it).
+command -v node >/dev/null || { echo "Missing: node"; exit 1; }
+python -c "import edge_tts" 2>/dev/null || { echo "Missing: pip install --user edge-tts"; exit 1; }
+[ -d "$ROOT/node_modules/playwright" ] || { echo "Missing: pnpm add playwright && pnpm exec playwright install chromium"; exit 1; }
+# VHS/Docker is needed ONLY for terminal / multi-agent scenes.
+if python prereqs.py needs-vhs scene-plan.json; then
+  command -v vhs >/dev/null || command -v docker >/dev/null || {
+    echo "Missing: VHS (winget install charmbracelet.vhs) or Docker — required for terminal/multi-agent scenes"; exit 1; }
+fi
+
+# ─── node_modules + backdrop into .build/ ───────────────────────────────
+[ -e node_modules ] || ln -s "$ROOT/node_modules" node_modules 2>/dev/null || cp -r "$ROOT/node_modules" node_modules
+BACKDROP_SRC="$(python -c "import json;print(json.load(open('config.json'))['subs']['backdrop_source'])")"
+if [[ "$BACKDROP_SRC" == http* ]]; then
+  echo "  downloading backdrop..."
+  curl -L -s -o videos/backdrop.jpg "$BACKDROP_SRC" || echo "  (backdrop download failed — frame uses bg color)"
+elif [ -f "$ROOT/$BACKDROP_SRC" ]; then
+  cp "$ROOT/$BACKDROP_SRC" videos/backdrop.jpg
+elif [ -f "$BACKDROP_SRC" ]; then
+  cp "$BACKDROP_SRC" videos/backdrop.jpg
+fi
+
+# Local server for Playwright HTML scenes (serves .build/)
 if ! curl -s -o /dev/null http://localhost:8765/; then
   python -m http.server 8765 >/dev/null 2>&1 &
   SERVER_PID=$!
@@ -67,23 +87,21 @@ if ! curl -s -o /dev/null http://localhost:8765/; then
   sleep 1
 fi
 
-# ─── 2-8. Pipeline ─────────────────────────────────────────────────────
+# ─── 2-8. Pipeline ──────────────────────────────────────────────────────
 echo "[2/8] Voiceover (Edge TTS)...";   python make-vo.py
 echo "[3/8] Captions...";               python make-captions.py
 [ -f music.mp3 ] || { echo "[4/8] Music..."; bash make-music.sh; }
-echo "[5/8] Planning + recording scenes..."
-python plan-scenes.py
-bash build-scenes.sh
-echo "[6/8] Assembling crossfade..."; bash assemble.sh
+echo "[5/8] Recording scenes...";       DEMO_NO_CACHE="$NO_CACHE" DEMO_ONLY="$ONLY" bash build-scenes.sh
+echo "[6/8] Assembling crossfade...";   bash assemble.sh
 echo "[7/8] Mixing audio + captions..."; bash mix-final.sh; bash burn-captions.sh
 echo "[8/8] Terminal-on-desk composite..."; node record-frame.mjs
 
-# ─── Copy out ──────────────────────────────────────────────────────────
+# ─── Copy out ───────────────────────────────────────────────────────────
 cd "$ROOT"; mkdir -p videos
 cp "$BUILD/videos/final-framed.mp4" videos/
 cp "$BUILD/videos/final-with-captions.mp4" videos/ 2>/dev/null || true
 cp "$BUILD/captions.srt" videos/ 2>/dev/null || true
 
 echo ""
-echo "Done → videos/final-framed.mp4"
+echo "Done -> videos/final-framed.mp4"
 ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 videos/final-framed.mp4 | awk '{printf "Duration: %.1fs\n", $1}'

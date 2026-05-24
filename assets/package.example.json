@@ -1,0 +1,9 @@
+{
+  "name": "demo-video-local",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local dependencies for the /demo-video pipeline (Playwright recorder). Copied to <project>/demo-video/package.json by `/demo-video init`; rename `name` to <project>-demo-video if you like.",
+  "dependencies": {
+    "playwright": "^1.60.0"
+  }
+}

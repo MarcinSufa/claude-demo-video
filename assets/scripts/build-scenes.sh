@@ -22,8 +22,25 @@ for s in plan:
     print("\t".join([s["id"], s["type"], s["mp4"], extra]))
 PY
 
+# P0-2 cache controls (passed through by build.sh)
+NO_CACHE="${DEMO_NO_CACHE:-0}"
+ONLY="${DEMO_ONLY:-}"
+
 while IFS=$'\t' read -r id type mp4 extra; do
   echo "[scene] $id ($type) -> $mp4"
+
+  # P0-2: reuse a scene's clip when nothing affecting it changed (skip capture).
+  # --no-cache forces all; --only <id> forces just that scene. screen_recording is
+  # never cached (it just references the user's external file).
+  force=0
+  [ "$NO_CACHE" = "1" ] && force=1
+  [ -n "$ONLY" ] && [ "$ONLY" = "$id" ] && force=1
+  if [ "$type" != "screen_recording" ] && [ "$force" = "0" ] \
+     && python scene_cache.py check "$PLAN" "$id" 2>/dev/null; then
+    echo "  -> cached (unchanged), skipping capture"
+    continue
+  fi
+
   case "$type" in
     terminal)
       tape=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin).get('tape',''))")
@@ -61,6 +78,9 @@ while IFS=$'\t' read -r id type mp4 extra; do
   if [ -n "$dur" ]; then
     python normalize-clip.py "$mp4" "$dur"
   fi
+
+  # P0-2: record the cache fingerprint of the finished (normalized) clip.
+  [ "$type" != "screen_recording" ] && python scene_cache.py save "$PLAN" "$id"
 done < .scene-rows.tsv
 
 rm -f .scene-rows.tsv

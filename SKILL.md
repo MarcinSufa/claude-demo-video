@@ -73,8 +73,8 @@ overruns. Override with `DEMO_ALLOW_TRUNCATE=1`. Catch it earlier with `/demo-vi
 | **Python 3.10+** | system | VO + caption scripts |
 | **Node 18+ + pnpm** | system | Playwright recorder |
 | **edge-tts** | `pip install --user edge-tts` | Free Microsoft TTS, no API key |
-| **playwright** | `cd demo-video && pnpm add playwright && pnpm exec playwright install chromium` | Headless Chrome for HTML scene capture |
-| **VHS** (Charm) | `winget install charmbracelet.vhs` / `brew install vhs` | Terminal scene recording |
+| **playwright** | `cd demo-video && pnpm install && pnpm exec playwright install chromium` | Headless Chrome for HTML/graph/end-card capture + frame composite (always needed) |
+| **VHS** (Charm) | `winget install charmbracelet.vhs` / `brew install vhs` | Terminal scene recording — **only if** the arc has terminal/multi-agent scenes |
 | **Docker** (alt) | system | VHS via container (Windows fallback) |
 
 The skill verifies these before running `build` and asks the user to install missing ones.
@@ -143,14 +143,20 @@ When invoked, follow this sequence:
    - `mkdir <project>/demo-video/`
    - Copy `assets/scripts/*` and `assets/templates/*` to that folder
    - Copy `assets/brand.example.yaml` → `brand.yaml`
+   - Copy `assets/package.example.json` → `package.json` (so `pnpm install` lands
+     Playwright in *this* folder, not a parent — without a local manifest pnpm walks
+     up and installs into the wrong `node_modules`). Optionally set `name` to `<project>-demo-video`.
    - Run a quick interactive interview (3-5 questions): product name, URL, voice gender/tone, what each scene should show
    - Fill in `brand.yaml` based on answers
-   - Print: "Edit `brand.yaml` to refine, then run `/demo-video build`"
+   - Print: "Run `pnpm install && pnpm exec playwright install chromium`, edit `brand.yaml`, then `/demo-video plan` and `/demo-video build`."
 
 3. **For `build`**:
    - Read `brand.yaml`
-   - Verify prerequisites (`ffmpeg --version`, `python -c "import edge_tts"`, `node -v`, `vhs --version` or docker available)
-   - If any missing → tell user the install command and STOP
+   - `build.sh` resolves the scene plan first, then gates prerequisites **arc-aware**:
+     ffmpeg/python/node/edge-tts/Playwright always; VHS/Docker only if the plan has a
+     terminal or multi-agent scene. Caching (`--no-cache`, `--only <id>`) reuses
+     unchanged scene clips between runs.
+   - If any missing → it prints the exact install command and STOPs
    - Template the scripts: substitute `{{project.name}}`, `{{palette.bg}}`, etc. into the bundled scripts/HTML/tape files
    - Start local http server: `python -m http.server 8765` (background)
    - Run pipeline in sequence:
@@ -231,6 +237,8 @@ demo-video/
 │   ├── check-timing.py         ← P0-1 truncation gate (run by mix-final.sh)
 │   ├── dry-run-plan.py         ← P3-1 dry run (run by build.sh --plan)
 │   ├── normalize-clip.py       ← P0-3 pin a scene to exact duration
+│   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes
+│   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker gate
 │   ├── record-frame.mjs
 │   ├── record-endcards.mjs
 │   ├── record-graph.mjs
