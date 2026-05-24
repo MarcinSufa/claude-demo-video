@@ -177,7 +177,8 @@ def main():
                 text = f.read()
             out_text, missing = render(text, subs)
             all_missing |= missing
-            with open(dst, "w", encoding="utf-8") as f:
+            # LF newlines — rendered .sh/.tape run in Linux bash (Docker VHS); CRLF breaks them
+            with open(dst, "w", encoding="utf-8", newline="\n") as f:
                 f.write(out_text)
             rendered.append(dst)
 
@@ -188,7 +189,7 @@ def main():
             text = f.read()
         out_text, missing = render(text, subs)
         all_missing |= missing
-        with open(os.path.join(args.out, "display.sh"), "w", encoding="utf-8") as f:
+        with open(os.path.join(args.out, "display.sh"), "w", encoding="utf-8", newline="\n") as f:
             f.write(out_text)
         rendered.append(os.path.join(args.out, "display.sh"))
 
@@ -239,7 +240,7 @@ def main():
     scene_data += bash_array("AGENT_NAMES", [a["name"] for a in agents])
     scene_data += bash_array("AGENT_SIGILS", [a.get("sigil", "▦") for a in agents])
     scene_data += bash_array("AGENT_SUBS", [a.get("subtitle", "") for a in agents])
-    with open(os.path.join(args.out, "scene-data.sh"), "w", encoding="utf-8") as f:
+    with open(os.path.join(args.out, "scene-data.sh"), "w", encoding="utf-8", newline="\n") as f:
         f.write(scene_data)
     rendered.append(os.path.join(args.out, "scene-data.sh"))
 
