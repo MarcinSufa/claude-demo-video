@@ -1,6 +1,6 @@
 {
   "name": "demo-video",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Produce a 50-second product demo video — voiceover (Edge TTS), karaoke captions, knowledge-graph animation, terminal scenes (VHS), and a real-photo terminal-on-desk backdrop. Zero paid services, single brand.yaml drives the whole thing.",
   "author": {
     "name": "Marcin Sufa",

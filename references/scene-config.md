@@ -59,6 +59,7 @@ smooth fake cursor, trims the pre-paint frame. This is how you demo **actual UI*
   settle_ms: 1200           # wait after page load before acting
   tail_ms: 1500             # hold at the end
   viewport: { width: 1920, height: 1080 }
+  duration: 6               # optional — pin the clip to EXACTLY 6s (see below)
   actions:
     - { wait: 1.0 }                                          # pause N seconds
     - { hover: ".sidebar .new-vault" }                       # glide + hover selector
@@ -98,6 +99,29 @@ ffmpeg normalizes it (1920×1080, 30fps, speedup) and folds it into the crossfad
   actions: [ { scroll: 300 } ]         # optional Playwright actions
 ```
 Same engine as the built-in `graph`/`endcards` scenes.
+
+### Pinning scene length (`duration:`) — deterministic alignment
+
+`browser_capture` and VHS clip lengths jitter run-to-run, which makes voiceover↔video
+timing a guessing game. Add `duration:` to **any generated scene** (browser_capture,
+html_mockup, terminal, graph, endcards) and the clip is normalized to exactly that —
+trimmed if long, freeze-frame padded if short:
+
+```yaml
+- { type: browser_capture, url: "...", duration: 6 }   # always 6.00s, every run
+```
+
+**`duration` is the RAW clip length (before `scenes.speedup`).** assemble.sh then
+applies speedup to every scene, so the on-screen length ≈ `duration / speedup`, and the
+final film length follows the validated model:
+
+```
+video = Σ(duration) / speedup − (N−1) × crossfade_seconds
+```
+
+Pin every scene's `duration` and the film length is known before you render — run
+`/demo-video plan` (dry run) to see the predicted length and a PASS/WARN against your
+voiceover estimate. Not applied to `screen_recording` (won't mutate your source file).
 
 ### Built-in scenes (reusable in custom arc)
 
@@ -143,8 +167,8 @@ polished launch film of your **real product UI**, not a terminal mockup.
 
 ## Status
 
-- `browser_capture` — ✅ working (record-browser.mjs)
-- `screen_recording` / `html_mockup` — engine exists (assemble normalizes any mp4;
-  Playwright renders any HTML); custom-arc dispatcher in assemble.sh is the remaining
-  wiring (v0.2). Until then, run `record-browser.mjs` standalone and drop outputs into
-  `videos/`, then point assemble at them.
+- `browser_capture` — ✅ working (record-browser.mjs), `duration:` honored
+- `html_mockup` — ✅ working (same Playwright engine), `duration:` honored
+- `screen_recording` — ✅ working (assemble normalizes any mp4); `duration:` ignored
+  (won't mutate your source file)
+- Custom-arc / `sequence` dispatcher — ✅ wired in build-scenes.sh (any scene count/order)

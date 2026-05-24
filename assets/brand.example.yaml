@@ -146,6 +146,9 @@ scenes:
       cursor: true
       settle_ms: 1200
       tail_ms: 1200
+      duration: 7              # optional: pin clip to EXACTLY 7s (raw, pre-speedup).
+                               # Makes VO<->video alignment deterministic. Run
+                               # `/demo-video plan` to preview total length + PASS/WARN.
       actions:
         - { wait: 1.0 }
         - { hover: ".sidebar .new-vault" }

@@ -96,6 +96,11 @@ def custom_arc(custom_scenes, start_index=0):
             entry["mp4"] = f"videos/{t}.mp4"
         else:
             sys.exit(f"Unknown custom scene type: {t}")
+        # P0-3: optional explicit duration — build-scenes.sh normalizes the clip to
+        # this exact length (trim/freeze-pad) so VO<->video alignment is deterministic.
+        # Not applied to screen_recording (would mutate the user's source file).
+        if sc.get("duration") is not None and t != "screen_recording":
+            entry["duration"] = float(sc["duration"])
         plan.append(entry)
     return plan
 

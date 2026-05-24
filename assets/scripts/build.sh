@@ -12,24 +12,40 @@ BUILD=".build"
 
 [ -f brand.yaml ] || { echo "Missing brand.yaml — run /demo-video init or copy assets/brand.example.yaml"; exit 1; }
 
+# --plan = P3-1 dry run: resolve scenes + estimate VO length, no TTS/capture/encode.
+PLAN_ONLY=0
+for arg in "$@"; do case "$arg" in --plan) PLAN_ONLY=1;; esac; done
+
 # ─── 0. Prerequisites ──────────────────────────────────────────────────
 echo "[0/8] Verifying prerequisites..."
-for cmd in ffmpeg ffprobe python node; do command -v $cmd >/dev/null || { echo "Missing: $cmd"; exit 1; }; done
-python -c "import edge_tts" 2>/dev/null || { echo "Missing: pip install --user edge-tts"; exit 1; }
+for cmd in ffmpeg ffprobe python; do command -v $cmd >/dev/null || { echo "Missing: $cmd"; exit 1; }; done
 python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyaml"; exit 1; }
-command -v vhs >/dev/null || command -v docker >/dev/null || { echo "Missing: VHS (winget install charmbracelet.vhs) or Docker"; exit 1; }
-[ -d node_modules/playwright ] || { echo "Missing: pnpm add playwright && pnpm exec playwright install chromium"; exit 1; }
+if [ "$PLAN_ONLY" = "0" ]; then
+  command -v node >/dev/null || { echo "Missing: node"; exit 1; }
+  python -c "import edge_tts" 2>/dev/null || { echo "Missing: pip install --user edge-tts"; exit 1; }
+  command -v vhs >/dev/null || command -v docker >/dev/null || { echo "Missing: VHS (winget install charmbracelet.vhs) or Docker"; exit 1; }
+  [ -d node_modules/playwright ] || { echo "Missing: pnpm add playwright && pnpm exec playwright install chromium"; exit 1; }
+fi
 
 # ─── 1. Compile brand → .build/ ────────────────────────────────────────
 echo "[1/8] Compiling brand.yaml → $BUILD/ ..."
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
 
 # Copy runtime scripts into .build/ so each `cd $(dirname $0)` operates there
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py} "$BUILD/"
 
-# node_modules + backdrop into .build/
-[ -e "$BUILD/node_modules" ] || ln -s "$ROOT/node_modules" "$BUILD/node_modules" 2>/dev/null || cp -r node_modules "$BUILD/node_modules"
 mkdir -p "$BUILD/videos"
+
+# ─── --plan: dry run (resolve scenes + estimate VO), then exit ──────────
+if [ "$PLAN_ONLY" = "1" ]; then
+  cd "$BUILD"; export DEMO_CONFIG=config.json
+  python plan-scenes.py
+  rc=0; python dry-run-plan.py || rc=$?
+  exit $rc
+fi
+
+# node_modules + backdrop into .build/ (full build only)
+[ -e "$BUILD/node_modules" ] || ln -s "$ROOT/node_modules" "$BUILD/node_modules" 2>/dev/null || cp -r node_modules "$BUILD/node_modules"
 BACKDROP_SRC="$(python -c "import json;print(json.load(open('$BUILD/config.json'))['subs']['backdrop_source'])")"
 if [[ "$BACKDROP_SRC" == http* ]]; then
   echo "  downloading backdrop..."

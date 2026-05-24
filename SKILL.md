@@ -35,8 +35,9 @@ Built entirely with **free tools** — ffmpeg, Playwright headless Chromium, VHS
 ```
 1. /demo-video init                  → scaffolds demo-video/ in current project
 2. user edits brand.yaml             → palette, voice, VO script, scenes
-3. /demo-video build                 → runs pipeline, produces final-framed.mp4
-4. /demo-video preview               → starts local server + tunnel for mobile review
+3. /demo-video plan                  → dry run (~1s): VO + video length estimate, PASS/WARN — no render
+4. /demo-video build                 → runs pipeline, produces final-framed.mp4
+5. /demo-video preview               → starts local server + tunnel for mobile review
 ```
 
 Inside Claude Code, the skill orchestrates these by reading config and invoking bundled scripts.
@@ -44,16 +45,25 @@ Inside Claude Code, the skill orchestrates these by reading config and invoking 
 ## Pipeline (what `build` runs)
 
 ```
+apply-brand.py    → compile brand.yaml → .build/ (rendered templates + config.json)
 make-vo.py        → Edge TTS streams vo.mp3 + vo-words.json (word-level timing)
 make-captions.py  → captions.ass (karaoke) + captions.srt
-make-music.sh     → procedural ambient pad music.mp3 (placeholder; swap with real track)
-assemble.sh       → 7 normalized scenes crossfaded → final-rough.mp4
-mix-final.sh      → voice + music sidechain-ducked → final-with-audio.mp4
+make-music.sh     → procedural ambient pad music.mp3 (or mode: file / none)
+plan-scenes.py    → resolve the scene sequence → scene-plan.json
+build-scenes.sh   → render each scene by type; pin to `duration:` (normalize-clip.py) if set
+assemble.sh       → normalize + speedup + crossfade N scenes → final-rough.mp4
+mix-final.sh      → ⚠ timing gate (check-timing.py) → voice + music sidechain-ducked → final-with-audio.mp4
 burn-captions.sh  → ffmpeg subtitles filter → final-with-captions.mp4
 record-frame.mjs  → Playwright snapshot + ffmpeg overlay → final-framed.mp4
 ```
 
 Each step caches outputs. Re-running only re-processes what changed.
+
+**Timing safety net (P0-1).** `mix-final.sh` cuts the voice track to the video length,
+so a voiceover longer than the assembled video would silently lose its closing line.
+Before muxing, `check-timing.py` compares the real speech-end (from `vo-words.json`)
+against the video and **fails the build** with an actionable message if narration
+overruns. Override with `DEMO_ALLOW_TRUNCATE=1`. Catch it earlier with `/demo-video plan`.
 
 ## Prerequisites
 
@@ -127,7 +137,7 @@ See `references/brand-config.md` for the full schema and tuning guide.
 
 When invoked, follow this sequence:
 
-1. **Detect intent**. If user says "init demo-video" → scaffold mode. If says "build" → pipeline mode. If neither, ask which.
+1. **Detect intent**. "init demo-video" → scaffold mode. "build" → pipeline mode. "plan" / "dry run" / "how long will it be" → plan mode (`bash scripts/build.sh --plan`). If neither, ask which.
 
 2. **For `init`**:
    - `mkdir <project>/demo-video/`
@@ -155,6 +165,14 @@ When invoked, follow this sequence:
      ```
    - On each step, report progress to user
    - On any error, stop and show ffmpeg/playwright stderr — most issues are missing fonts or wrong palette syntax
+
+3b. **For `plan`** (dry run, ~1s, no render):
+   - `bash scripts/build.sh --plan`
+   - Reports each scene's pinned `duration` (and on-screen length after speedup), the
+     voiceover length estimated from word count (no TTS), and the predicted video length
+     with a **PASS/WARN** verdict. WARN exits non-zero — narration would be cut.
+   - Needs only ffmpeg + python + pyyaml (no VHS/Playwright/edge-tts), so it runs anywhere.
+   - Use it before `build` to tune `voiceover` / scene `duration` / `speedup` cheaply.
 
 4. **For `preview`**:
    - Verify cloudflared binary exists in project (offer to download from https://github.com/cloudflare/cloudflared/releases/latest if missing — ~50 MB)
@@ -200,17 +218,25 @@ These were discovered the hard way building the reference implementation. The bu
 demo-video/
 ├── brand.yaml                  ← user edits this
 ├── scripts/                    ← copied from skill
+│   ├── apply-brand.py          ← compiles brand.yaml → .build/
 │   ├── make-vo.py
 │   ├── make-captions.py
 │   ├── make-music.sh
+│   ├── plan-scenes.py          ← resolves scene sequence
+│   ├── build-scenes.sh
 │   ├── assemble.sh
 │   ├── mix-final.sh
 │   ├── burn-captions.sh
+│   ├── timing_util.py          ← shared VO/video alignment math (unit-tested)
+│   ├── check-timing.py         ← P0-1 truncation gate (run by mix-final.sh)
+│   ├── dry-run-plan.py         ← P3-1 dry run (run by build.sh --plan)
+│   ├── normalize-clip.py       ← P0-3 pin a scene to exact duration
 │   ├── record-frame.mjs
 │   ├── record-endcards.mjs
 │   ├── record-graph.mjs
+│   ├── record-browser.mjs      ← real-app / html_mockup capture
 │   ├── display.sh
-│   └── build.sh                ← orchestrator
+│   └── build.sh                ← orchestrator (build | --plan)
 ├── templates/
 │   ├── frame.html              ← terminal-on-desk composite
 │   ├── endcards.html           ← branded end cards
@@ -236,3 +262,4 @@ After `build` completes, the user has:
 - `references/brand-config.md` — full `brand.yaml` schema with all options
 - `references/troubleshooting.md` — debugging white flashes, sync drift, audio truncation
 - `references/persuasion-pacing.md` — VO writing principles (Anthropic-style narration, 115 wpm, short sentences)
+- `tests/` — `python -m unittest discover -s tests` (timing/duration logic; run before changing those scripts)

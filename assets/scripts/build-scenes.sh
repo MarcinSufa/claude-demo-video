@@ -55,6 +55,12 @@ while IFS=$'\t' read -r id type mp4 extra; do
     *)
       echo "  unknown scene type: $type"; exit 1 ;;
   esac
+
+  # P0-3: pin the clip to an explicit duration when the scene declares one.
+  dur=$(echo "$extra" | python -c "import json,sys;d=json.load(sys.stdin).get('duration');print(d if d is not None else '')")
+  if [ -n "$dur" ]; then
+    python normalize-clip.py "$mp4" "$dur"
+  fi
 done < .scene-rows.tsv
 
 rm -f .scene-rows.tsv

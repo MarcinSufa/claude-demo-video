@@ -18,6 +18,11 @@ MUSIC_VOL=0.45
 
 VIDEO_DUR=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$VIDEO")
 
+# ── P0-1 safety net: never silently truncate narration ──
+# Below, the voice is apad-padded then hard-cut with `-t "$VIDEO_DUR"`. If the
+# voiceover runs past the video, the closing line is lost with no warning. Gate it.
+python check-timing.py "$VIDEO" vo-words.json || exit 1
+
 if [ -f .music-none ] || [ ! -f "$MUSIC" ]; then
   # ── Voice only (music.mode: none) ──
   echo "Mixing: voice only (no music bed)"
