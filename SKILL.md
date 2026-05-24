@@ -53,7 +53,8 @@ make-vo.py        → Edge TTS streams vo.mp3 + vo-words.json (word-level timing
 make-captions.py  → captions.ass (karaoke) + captions.srt
 make-music.sh     → procedural ambient pad music.mp3 (or mode: file / none)
 plan-scenes.py    → resolve the scene sequence → scene-plan.json
-make-auth.mjs     → (if `auth:` set) log in once → auth.json (authed scenes reuse it)
+make-auth.mjs     → (if `auth:` set) log in once → auth.json (authed scenes reuse it).
+                    mode: scripted (creds) | manual (headed, you log in — SSO/OIDC/2FA)
 build-scenes.sh   → render each scene by type; pin to `duration:` (normalize-clip.py) if set; cached
 autofit.py        → (if `scenes.autofit`) adjust speedup so video holds the voiceover
 assemble.sh       → normalize + speedup + crossfade N scenes → final-rough.mp4

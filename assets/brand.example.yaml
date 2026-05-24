@@ -81,8 +81,9 @@ voice:
 
 # ─── AUTH (optional) ───────────────────────────────────────────────────
 # Log in ONCE; scenes with `auth: true` reuse the session (no login UI on camera).
-# Runs the actions below, saves the Playwright session, and authed browser_capture
-# scenes start already logged in at their target URL.
+# Two modes:
+#
+# 1) scripted (default) — replay the actions headlessly with credentials:
 # auth:
 #   login_url: "http://localhost:3000/login"
 #   actions:
@@ -90,6 +91,14 @@ voice:
 #     - { fill: { selector: "#password", text: "demo-password" } }
 #     - { click: "button[type=submit]" }
 #   wait_for: "**/dashboard"        # URL glob OR a selector that confirms login landed
+#
+# 2) manual — opens a HEADED browser so YOU log in by hand (SSO / OIDC / 2FA — anything
+#    that can't be scripted, and NO credentials in this file). Saves the session and
+#    reuses it on later builds (delete .build/auth.json to log in again):
+# auth:
+#   mode: manual
+#   login_url: "https://app.yoursite.com/"
+#   wait_for: 'role=link[name="Dashboard"]'   # a post-login signal (a selector is most robust)
 
 # ─── MUSIC ───────────────────────────────────────────────────────────────
 music:

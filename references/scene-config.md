@@ -115,8 +115,10 @@ Override per scene with `warmup: true|false`.
 
 Each `browser_capture` runs in its own browser context, so an authenticated app would
 otherwise need to log in inside every scene. Define a top-level `auth:` block — the build
-logs in **once** (via `make-auth.mjs`), saves the session, and any scene with `auth: true`
-starts already logged in with no login UI on camera:
+logs in **once** (via `make-auth.mjs`), saves the session (Playwright `storageState`), and
+any scene with `auth: true` starts already logged in with no login UI on camera.
+
+**Scripted** (default) — replay credentials headlessly:
 
 ```yaml
 auth:
@@ -132,8 +134,22 @@ scenes:
     - { type: browser_capture, url: "http://localhost:3000/orders", auth: true }
 ```
 
-Cookie/JWT logins work out of the box; full OAuth-redirect flows may still need an
-on-camera login. (Don't commit real credentials — use a demo/test account.)
+**Manual** (`mode: manual`) — for SSO / OIDC / 2FA flows that can't be scripted, and to keep
+**zero credentials in the file**. The build opens a **headed** browser; you log in by hand,
+and the session is saved + reused on later builds (delete `.build/auth.json` to re-login):
+
+```yaml
+auth:
+  mode: manual
+  login_url: "https://app.example.com/"
+  wait_for: 'role=link[name="Dashboard"]'   # a post-login signal — a SELECTOR is most robust
+                                             # (a URL glob can match a transient pre-login hop)
+```
+
+If login doesn't complete, `make-auth.mjs` fails loudly (prints the final URL + page text,
+saves `auth-fail.png`, exits non-zero) instead of recording a login screen. Tip: target the
+multi-select options that portal to `<body>` with an UNscoped `role=option[name="…"]`
+(scoping to the dialog misses them).
 
 ### Auto-fitting length to the voiceover (`scenes.autofit`)
 

@@ -1,18 +1,26 @@
-// make-auth.mjs — P2-1: log in ONCE, save the session for authed scenes.
+// make-auth.mjs — P2-1: establish a login session ONCE, save it for authed scenes.
 //
 // Each browser_capture scene runs in its own Playwright context, so authenticated
-// apps would otherwise need to log in inside every scene. This runs the brand.yaml
-// `auth:` flow once and writes Playwright storageState to auth.json; record-browser.mjs
-// then loads it for any scene with `auth: true` — so those scenes start already
-// logged in, with no login UI on camera.
+// apps would otherwise need to log in inside every scene. This writes Playwright
+// storageState to auth.json; record-browser.mjs loads it for any scene with
+// `auth: true` — so those scenes start already logged in, no login UI on camera.
 //
-// Reads config.json's `auth` block:
-//   auth:
-//     login_url: "http://localhost:3000/login"
-//     actions: [ { fill: { selector: "#email", text: "..." } },
-//                { fill: { selector: "#password", text: "..." } },
-//                { click: "button[type=submit]" } ]
-//     wait_for: "**/dashboard"     # URL glob OR a selector to confirm login landed
+// Two modes (config.json `auth.mode`):
+//   scripted (default): replay `auth.actions` headlessly with credentials.
+//     auth:
+//       login_url: "http://localhost:3000/login"
+//       actions: [ { fill: { selector: "#email", text: "..." } },
+//                  { fill: { selector: "#password", text: "..." } },
+//                  { click: "button[type=submit]" } ]
+//       wait_for: "**/dashboard"      # URL glob OR a selector confirming login landed
+//
+//   manual: open a HEADED browser and let a human log in (SSO / OIDC / 2FA — anything
+//     that can't be scripted, and no credentials in any file). Reuses an existing
+//     auth.json if present (delete it to log in again).
+//     auth:
+//       mode: manual
+//       login_url: "https://app.example.com/"
+//       wait_for: 'role=link[name="Dashboard"]'   # a post-login signal (selector preferred)
 //
 // No auth block → no-op (exits 0).
 
@@ -27,6 +35,59 @@ if (!auth.login_url) {
   process.exit(0);
 }
 
+const mode = auth.mode || 'scripted';
+const isUrlMatcher = (wf) => wf.includes('/') || wf.includes('*');
+
+async function confirmLogin(page, wf, timeout) {
+  if (!wf) { await page.waitForTimeout(1500); return true; }
+  try {
+    if (isUrlMatcher(wf)) await page.waitForURL(wf, { timeout });
+    else await page.waitForSelector(wf, { state: 'visible', timeout });
+    await page.waitForLoadState('networkidle').catch(() => {});
+    return true;
+  } catch (e) {
+    console.error(`  login wait_for "${wf}" not satisfied: ${e.message}`);
+    return false;
+  }
+}
+
+async function failLoud(page, browser, hint) {
+  await page.screenshot({ path: 'auth-fail.png' }).catch(() => {});
+  const snippet = await page
+    .evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 160))
+    .catch(() => '');
+  console.error('\n[X] LOGIN DID NOT COMPLETE — not saving auth.json.');
+  console.error(`    final URL: ${page.url()}`);
+  if (snippet) console.error(`    page says: "${snippet}"`);
+  console.error(`    ${hint}`);
+  console.error('    Screenshot: .build/auth-fail.png\n');
+  await browser.close();
+  process.exit(1);
+}
+
+// ── manual mode ─────────────────────────────────────────────────────────
+if (mode === 'manual') {
+  if (existsSync('auth.json')) {
+    console.log('  manual auth: reusing existing auth.json (delete it to log in again)');
+    process.exit(0);
+  }
+  const browser = await chromium.launch({ headless: false });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  console.log('\n  >>> A browser window is opening — LOG IN to the app there.');
+  console.log('  >>> When the app finishes loading, leave it; the session saves automatically.\n');
+  await page.goto(auth.login_url).catch(e => console.warn('  nav warning:', e.message));
+  await page.waitForTimeout(1500);
+  const ok = await confirmLogin(page, auth.wait_for, 270000);  // ~4.5 min for a human
+  if (!ok) await failLoud(page, browser, 'Set auth.wait_for to a post-login selector (e.g. a nav link).');
+  await page.waitForTimeout(1200);
+  await context.storageState({ path: 'auth.json' });
+  await browser.close();
+  console.log('  saved login session -> auth.json');
+  process.exit(0);
+}
+
+// ── scripted mode (default) ─────────────────────────────────────────────
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
 const page = await context.newPage();
@@ -48,37 +109,10 @@ for (const action of auth.actions ?? []) {
   }
 }
 
-// Confirm the login landed. wait_for can be a URL glob ("**/dashboard") or a selector.
-let loginOk = true;
-if (auth.wait_for) {
-  const wf = auth.wait_for;
-  const isUrl = wf.includes('/') || wf.includes('*');
-  try {
-    if (isUrl) await page.waitForURL(wf, { timeout: 20000 });
-    else await page.waitForSelector(wf, { timeout: 20000 });
-  } catch (e) {
-    loginOk = false;
-    console.error(`  login wait_for "${wf}" not satisfied: ${e.message}`);
-  }
-} else {
-  await page.waitForTimeout(1500);
-}
-
 // Fail LOUDLY on incomplete login — don't silently save a useless session that would
-// make authed scenes record a login screen. Saves a screenshot so you can see why
-// (wrong credentials, a selector that missed, an extra login step, etc.).
-if (!loginOk) {
-  await page.screenshot({ path: 'auth-fail.png' }).catch(() => {});
-  const snippet = await page
-    .evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 160))
-    .catch(() => '');
-  console.error('\n[X] LOGIN DID NOT COMPLETE — not saving auth.json.');
-  console.error(`    final URL: ${page.url()}`);
-  if (snippet) console.error(`    page says: "${snippet}"`);
-  console.error('    Check the auth.actions selectors + credentials (and any extra login step).');
-  console.error('    Screenshot: .build/auth-fail.png\n');
-  await browser.close();
-  process.exit(1);
+// make authed scenes record a login screen.
+if (!(await confirmLogin(page, auth.wait_for, 20000))) {
+  await failLoud(page, browser, 'Check the auth.actions selectors + credentials (and any extra login step).');
 }
 
 await context.storageState({ path: 'auth.json' });
