@@ -1,34 +1,37 @@
 ---
 name: demo-video
-description: Use when the user wants to produce a 50-second product demo video for their project — including voiceover, captions, terminal scenes, knowledge-graph visualisation, and a real-photo backdrop. Triggers on "create demo video", "make product video", "launch film", "show this as a video", "video for landing page", "screen recording with narration", "ExoVault-style demo".
+description: Use when the user wants to turn their app, UI, or product into a polished ~50s feature/demo video showing how it works — capturing the real running app (or an HTML mockup, or a terminal), narrated with AI voiceover, synced karaoke captions, a music bed, and brand framing. Triggers on "make a feature video", "demo video of my app", "show how my app works as a video", "UI walkthrough video", "product launch film", "video for landing page", "record my app with narration", "screen recording with voiceover and captions", "ExoVault-style demo".
 ---
 
-# /demo-video — produce a 50s product demo film
+# /demo-video — turn an app/UI into a ~50s narrated feature film
 
 ## What it makes
 
-A single `final-framed.mp4` (~50s, 1920×1080, ~3 MB) that contains:
+A single `final-framed.mp4` (~50s, 1920×1080) that shows **how an application works**, in a polished product-film aesthetic:
 
-- **7 scene story arc** (hero → typing → amnesia → graph → recall → multi-agent → end cards)
-- **AI voiceover** (Edge TTS, free, no API key)
-- **Karaoke word-highlight captions** (synced to voice via WordBoundary events)
-- **Ambient music bed** (ducked under voice)
-- **Terminal-on-desk treatment** — the demo plays inside a styled terminal window composited on a real workspace photo
+- **Your scenes, your order** — `scenes.sequence` composes any mix of: `browser_capture` (drive + record the REAL running app), `html_mockup` (a designed screen for an unbuilt feature), `screen_recording` (an existing clip), `terminal` (CLI via VHS), plus built-in `graph` and `endcards`.
+- **AI voiceover** narrating the feature (Edge TTS, free, no API key, many languages/voices)
+- **Karaoke word-highlight captions** synced via WordBoundary events, readable on light AND dark UI
+- **Music bed** — procedural / your own file / none — auto-ducked under the voice
+- **Brand framing** — palette, fonts, logo, end cards; optional styled-window-on-desk composite
 
 Built entirely with **free tools** — ffmpeg, Playwright headless Chromium, VHS (Charm), Edge TTS. Zero paid services.
 
+The bundled default (`memory-product-default`) is a 7-scene terminal narrative, but that's just one example arc — the common case is composing your own scenes around your real app's UI.
+
 ## When to use
 
-- User says they want a product demo video, launch film, or social-media demo
-- User has a CLI/terminal product they want to showcase
-- User wants something in the style of Anthropic's "agent view in Claude Code" feature drops
-- User mentions tools that won't help: "After Effects is too much", "Screen Studio is Mac-only", "Loom is just screen recording"
+- User wants a feature/demo/launch video of their **app or UI** — showing how it works, narrated and captioned
+- User wants to capture their **real running app** (localhost or live site) as a polished film
+- User wants to demo a **feature that isn't built yet** (use an `html_mockup` scene — no throwaway code in the real app)
+- User has a CLI/terminal product to showcase
+- User wants the aesthetic of Anthropic/Linear-style product films without an After Effects / Synthesia / HeyGen subscription
 
 ## When NOT to use
 
-- User wants live screen recording of an actual session → use /qa or /browse instead
-- User wants a 5-minute tutorial → this targets 50s product films, not long-form content
-- User wants pure motion graphics with no terminal/CLI element → use a real design tool
+- User wants a raw, unedited live screen recording of a working session → use /qa or /browse instead
+- User wants a 5-minute tutorial → this targets ~50s feature films, not long-form content
+- User wants pure motion graphics / explainer animation with no real UI, terminal, or mockup → use a design tool
 
 ## Workflow (single command per project)
 

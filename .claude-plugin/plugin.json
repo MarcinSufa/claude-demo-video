@@ -1,7 +1,7 @@
 {
   "name": "demo-video",
-  "version": "0.6.0",
-  "description": "Produce a 50-second product demo video — voiceover (Edge TTS), karaoke captions, knowledge-graph animation, terminal scenes (VHS), and a real-photo terminal-on-desk backdrop. Zero paid services, single brand.yaml drives the whole thing.",
+  "version": "0.6.1",
+  "description": "Turn your app or UI into a ~50s feature film — record your real running app (or an HTML mockup, or a terminal), narrated with AI voiceover, synced karaoke captions, a music bed, and your brand's palette/fonts/end-cards. Free tools only; one brand.yaml drives it.",
   "author": {
     "name": "Marcin Sufa",
     "email": "sufa.marcin@gmail.com"

@@ -1,7 +1,7 @@
 {
   "name": "claude-demo-video",
   "metadata": {
-    "description": "Free 50s product demo film. Edge TTS narration + ffmpeg + Playwright HTML overlays. Single brand.yaml drives palette/voice/scenes/captions."
+    "description": "Turn your app/UI into a ~50s feature film — capture your real running app (or a mockup, or a terminal), narrated with Edge TTS, synced karaoke captions, music bed, brand framing. Free tools; one brand.yaml."
   },
   "owner": {
     "name": "Marcin Sufa",
@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "demo-video",
-      "description": "Run `/demo-video init` to scaffold the build into your project, edit brand.yaml, then `/demo-video build` produces final-framed.mp4 in ~75s. Voiceover via Edge TTS (free, no API key). Karaoke word-highlight captions via WordBoundary timing. Knowledge-graph + end-card scenes rendered from HTML + Playwright. Terminal scenes via VHS. Output 1920×1080 H.264, ~3 MB, ~50s.",
+      "description": "Produce a ~50s feature film of your app/UI. `/demo-video init` scaffolds into your project; edit brand.yaml (scenes + voiceover); `/demo-video build` produces final-framed.mp4. Capture your REAL running app (Playwright: click/type/scroll), HTML mockups for unbuilt features, screen recordings, or terminal scenes (VHS) — composed with Edge TTS voiceover, karaoke captions, ducked music, and brand framing. Output 1920×1080 H.264.",
       "author": {"name": "Marcin Sufa"},
       "source": "./",
       "category": "productivity",
