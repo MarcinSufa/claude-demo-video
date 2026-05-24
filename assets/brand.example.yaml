@@ -103,6 +103,8 @@ voice:
 # ─── MUSIC ───────────────────────────────────────────────────────────────
 music:
   mode: "procedural"               # "procedural" | "file" | "none"
+  style: "warm"                    # procedural style: "warm" (C-minor pad, calm) |
+                                   # "uplift" (I–vi–IV–V major progression, brighter/moving)
   volume: 0.45                     # bed level (ducked under voice automatically)
 
   # mode: file — supply your own track. FREE sources (no attribution / CC0):

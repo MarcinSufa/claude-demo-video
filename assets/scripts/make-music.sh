@@ -36,8 +36,33 @@ esac
 # ── procedural (default) ──
 [ -f .music-none ] && rm -f .music-none
 DUR=60
+STYLE="warm"
+[ -f "$CFG" ] && STYLE=$(python -c "import json;print(json.load(open('$CFG')).get('music',{}).get('style','warm'))" 2>/dev/null || echo warm)
 
-# C minor chord — C3 + Eb3 + G3 + C4 — soft and contemplative
+if [ "$STYLE" = "uplift" ]; then
+  # I–vi–IV–V in C major — a brighter, gently MOVING pad (confident, good for product demos).
+  WORK=.music-uplift; mkdir -p "$WORK"; rm -f "$WORK"/seg_*.wav
+  chords=( "261.63 329.63 392.00" "220.00 261.63 329.63" "174.61 220.00 261.63" "196.00 246.94 293.66" )
+  CHORD=7.5; LIST="$WORK/list.txt"; : > "$LIST"; idx=0
+  for rep in 1 2; do for c in 0 1 2 3; do
+    read -r f1 f2 f3 <<< "${chords[$c]}"
+    ffmpeg -y -hide_banner -loglevel error \
+      -f lavfi -i "sine=frequency=$f1:duration=$CHORD" \
+      -f lavfi -i "sine=frequency=$f2:duration=$CHORD" \
+      -f lavfi -i "sine=frequency=$f3:duration=$CHORD" \
+      -filter_complex "[0]volume=0.42[a];[1]volume=0.3[b];[2]volume=0.24[c];[a][b][c]amix=inputs=3:normalize=0,afade=t=in:st=0:d=0.5,afade=t=out:st=$(awk "BEGIN{print $CHORD-1}"):d=1" \
+      "$WORK/seg_$idx.wav"
+    echo "file '$(pwd)/$WORK/seg_$idx.wav'" >> "$LIST"; idx=$((idx+1))
+  done; done
+  ffmpeg -y -hide_banner -loglevel error -f concat -safe 0 -i "$LIST" \
+    -filter_complex "aecho=0.8:0.6:600|1200:0.3|0.18,lowpass=f=2400,highpass=f=70,dynaudnorm=f=400:g=15,afade=t=in:st=0:d=2,afade=t=out:st=$(awk "BEGIN{print $DUR-5}"):d=5" \
+    -t "$DUR" -c:a libmp3lame -b:a 192k -ar 44100 music.mp3
+  rm -rf "$WORK"
+  echo "Done -> music.mp3 (${DUR}s procedural uplift progression)"
+  exit 0
+fi
+
+# warm (default): C minor sustained pad — soft and contemplative
 ffmpeg -y -hide_banner -loglevel error \
   -f lavfi -i "sine=frequency=130.81:duration=${DUR}" \
   -f lavfi -i "sine=frequency=155.56:duration=${DUR}" \

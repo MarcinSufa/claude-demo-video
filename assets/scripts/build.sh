@@ -18,6 +18,19 @@ ROOT="$(pwd)"
 SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"   # .../scripts
 BUILD=".build"
 
+# ─── Progress bar + elapsed/ETA ─────────────────────────────────────────
+BUILD_START=$(date +%s)
+step() {                       # step <percent> <label...>
+  local pct=$1; shift
+  local label="$*"
+  local width=22
+  local filled=$((pct * width / 100))
+  local i bar=""
+  for ((i = 0; i < width; i++)); do [ "$i" -lt "$filled" ] && bar+="█" || bar+="░"; done
+  local el=$(( $(date +%s) - BUILD_START ))
+  printf "\n[%s] %3d%%  %-28s %dm%02ds\n" "$bar" "$pct" "$label" $((el / 60)) $((el % 60))
+}
+
 [ -f brand.yaml ] || { echo "Missing brand.yaml — run /demo-video init or copy assets/brand.example.yaml"; exit 1; }
 
 # ─── Flags ──────────────────────────────────────────────────────────────
@@ -34,12 +47,12 @@ while [ $# -gt 0 ]; do
 done
 
 # ─── 0. Base prerequisites (needed just to compile + resolve the plan) ──
-echo "[0/8] Verifying prerequisites..."
+step 4 "Verifying prerequisites"
 for cmd in ffmpeg ffprobe python; do command -v $cmd >/dev/null || { echo "Missing: $cmd"; exit 1; }; done
 python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyaml"; exit 1; }
 
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
-echo "[1/8] Compiling brand.yaml → $BUILD/ ..."
+step 10 "Compiling brand.yaml"
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
 cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
@@ -55,6 +68,11 @@ if [ "$PLAN_ONLY" = "1" ]; then
   rc=0; python dry-run-plan.py || rc=$?
   exit $rc
 fi
+
+# Rough ETA from the scene count (TTS + captures + assemble/encode dominate).
+N_SCENES=$(python -c "import json;print(len(json.load(open('scene-plan.json'))['scenes']))")
+EST_LO=$(( (45 + N_SCENES * 18) / 60 )); EST_HI=$(( (75 + N_SCENES * 30) / 60 + 1 ))
+echo "  Estimated build time: ~${EST_LO}-${EST_HI} min ($N_SCENES scenes). Live progress below."
 
 # ─── 0b. Arc-aware prerequisite gate (full build) ───────────────────────
 # Playwright is always needed (end-card / graph / terminal-on-desk composite use it).
@@ -88,21 +106,22 @@ if ! curl -s -o /dev/null http://localhost:8765/; then
 fi
 
 # ─── 2-8. Pipeline ──────────────────────────────────────────────────────
-echo "[2/8] Voiceover (Edge TTS)...";   python make-vo.py
-echo "[3/8] Captions...";               python make-captions.py
-[ -f music.mp3 ] || { echo "[4/8] Music..."; bash make-music.sh; }
+step 26 "Voiceover (Edge TTS)";     python make-vo.py
+step 34 "Captions";                 python make-captions.py
+[ -f music.mp3 ] || { step 40 "Music bed"; bash make-music.sh; }
 # P2-1: log in once if an auth block is configured (authed scenes reuse the session)
 if [ "$(python -c "import json;print(bool(json.load(open('config.json')).get('auth',{}).get('login_url')))")" = "True" ]; then
-  echo "[5/8] Auth login (storageState)..."; node make-auth.mjs
+  step 46 "Auth login (storageState)"; node make-auth.mjs
 fi
-echo "[5/8] Recording scenes...";       DEMO_NO_CACHE="$NO_CACHE" DEMO_ONLY="$ONLY" bash build-scenes.sh
+step 52 "Recording scenes";         DEMO_NO_CACHE="$NO_CACHE" DEMO_ONLY="$ONLY" bash build-scenes.sh
 # P0-1 (opt-in): fit playback speed to the voiceover length
 if [ "$(python -c "import json;print(json.load(open('config.json')).get('scenes',{}).get('autofit',False))")" = "True" ]; then
-  echo "  autofit: fitting speed to voiceover..."; python autofit.py
+  step 76 "Auto-fit speed to voiceover"; python autofit.py
 fi
-echo "[6/8] Assembling crossfade...";   bash assemble.sh
-echo "[7/8] Mixing audio + captions..."; bash mix-final.sh; bash burn-captions.sh
-echo "[8/8] Terminal-on-desk composite..."; node record-frame.mjs
+step 80 "Assembling crossfade";     bash assemble.sh
+step 90 "Mixing audio + captions";  bash mix-final.sh; bash burn-captions.sh
+step 96 "Compositing frame";        node record-frame.mjs
+step 100 "Done"
 
 # ─── Copy out ───────────────────────────────────────────────────────────
 cd "$ROOT"; mkdir -p videos
