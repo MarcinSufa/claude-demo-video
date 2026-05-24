@@ -45,8 +45,9 @@ FONT_SPECS = {
     "Cormorant Garamond": "ital,wght@0,400;0,500;1,400",
     "EB Garamond": "ital,wght@0,400;0,500;1,400",
     "Spectral": "ital,wght@0,300;0,400;0,500;1,400",
-    # sans (Geist has NO italic — must not request it)
+    # sans (Geist + Manrope have NO italic — must not request it)
     "Geist": "wght@300;400;500;600;700",
+    "Manrope": "wght@300;400;500;600;700;800",
     "Inter": "ital,wght@0,300;0,400;0,500;0,600;1,400",
     "Instrument Sans": "ital,wght@0,400;0,500;0,600;1,400",
     "Space Grotesk": "wght@300;400;500;700",

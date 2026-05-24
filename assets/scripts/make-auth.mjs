@@ -49,17 +49,36 @@ for (const action of auth.actions ?? []) {
 }
 
 // Confirm the login landed. wait_for can be a URL glob ("**/dashboard") or a selector.
+let loginOk = true;
 if (auth.wait_for) {
   const wf = auth.wait_for;
   const isUrl = wf.includes('/') || wf.includes('*');
   try {
-    if (isUrl) await page.waitForURL(wf, { timeout: 15000 });
-    else await page.waitForSelector(wf, { timeout: 15000 });
+    if (isUrl) await page.waitForURL(wf, { timeout: 20000 });
+    else await page.waitForSelector(wf, { timeout: 20000 });
   } catch (e) {
-    console.warn(`  wait_for "${wf}" not satisfied: ${e.message} (saving session anyway)`);
+    loginOk = false;
+    console.error(`  login wait_for "${wf}" not satisfied: ${e.message}`);
   }
 } else {
   await page.waitForTimeout(1500);
+}
+
+// Fail LOUDLY on incomplete login — don't silently save a useless session that would
+// make authed scenes record a login screen. Saves a screenshot so you can see why
+// (wrong credentials, a selector that missed, an extra login step, etc.).
+if (!loginOk) {
+  await page.screenshot({ path: 'auth-fail.png' }).catch(() => {});
+  const snippet = await page
+    .evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 160))
+    .catch(() => '');
+  console.error('\n[X] LOGIN DID NOT COMPLETE — not saving auth.json.');
+  console.error(`    final URL: ${page.url()}`);
+  if (snippet) console.error(`    page says: "${snippet}"`);
+  console.error('    Check the auth.actions selectors + credentials (and any extra login step).');
+  console.error('    Screenshot: .build/auth-fail.png\n');
+  await browser.close();
+  process.exit(1);
 }
 
 await context.storageState({ path: 'auth.json' });
