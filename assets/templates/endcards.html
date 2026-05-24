@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en" style="background:{{palette_end_card_bg}}">
+<head>
+<style>html,body{background:{{palette_end_card_bg}} !important;}</style>
+<meta charset="utf-8" />
+<title>{{project_name}} — end cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: {{palette_end_card_bg}};
+    --rule: {{palette_rule}};
+    --bone: {{palette_fg}};
+    --bone-hi: {{palette_fg}};
+    --bone-lo: {{palette_fg_lo}};
+    --bone-faint: {{palette_fg_faint}};
+    --brass: {{palette_accent}};
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg); color: var(--bone);
+    width: 100vw; height: 100vh; overflow: hidden;
+    font-family: "{{font_display}}", Georgia, serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body { display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; }
+
+  .stage { position: relative; }
+  .block {
+    opacity: 0; transform: translateY(8px);
+    transition: opacity 1.4s cubic-bezier(.22,.61,.36,1), transform 1.4s cubic-bezier(.22,.61,.36,1);
+  }
+  .block.in { opacity: 1; transform: translateY(0); }
+
+  .logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 56px; }
+  .mark { margin-bottom: 16px; line-height: 0; filter: drop-shadow(0 0 24px rgba(0,0,0,0.0)); }
+  .mark svg { width: 260px; height: auto; }
+  .wordmark {
+    font-family: "{{font_display}}", Georgia, serif;
+    font-weight: 400; font-size: 96px; letter-spacing: -0.015em;
+    color: var(--bone-hi); line-height: 1;
+  }
+  .wordmark .exo   { font-style: italic; font-weight: 300; }
+  .wordmark .vault { font-style: normal; font-weight: 500; }
+
+  .tagline {
+    font-family: "Instrument Serif", "{{font_display}}", Georgia, serif;
+    font-style: italic; font-weight: 400; font-size: 32px;
+    color: var(--bone-lo); margin-bottom: 48px; letter-spacing: 0.005em;
+  }
+
+  .spec {
+    font-family: "{{font_mono}}", ui-monospace, Menlo, monospace;
+    font-size: 13px; color: var(--bone-faint);
+    letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 64px;
+  }
+  .spec .dot { color: var(--brass); margin: 0 14px; }
+
+  .url {
+    font-family: "{{font_mono}}", ui-monospace, Menlo, monospace;
+    font-weight: 500; font-size: 22px; color: var(--brass);
+    letter-spacing: 0.02em; padding: 12px 28px;
+    border: 1px solid var(--rule); border-radius: 2px;
+    transition: border-color 1.2s ease;
+  }
+  .url.glow { border-color: var(--brass); }
+
+  @keyframes markPulse {
+    0%, 100% { filter: drop-shadow(0 0 24px rgba(0,0,0,0.0)); }
+    50% { filter: drop-shadow(0 0 40px var(--brass)); }
+  }
+  .mark.pulsing { animation: markPulse 2.6s ease-in-out infinite; }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="block logo" id="logo">
+    <div class="mark" id="mark">{{logo_svg}}</div>
+    <div class="wordmark"><span class="exo">{{wordmark_italic}}</span><span class="vault">{{wordmark_roman}}</span></div>
+  </div>
+
+  <div class="block tagline" id="tagline">{{tagline}}</div>
+
+  <div class="block spec" id="spec">{{spec_line_html}}</div>
+
+  <div class="block" id="urlblock">
+    <span class="url" id="url">{{url_pill}}</span>
+  </div>
+</div>
+
+<script>
+const delay = ms => new Promise(r => setTimeout(r, ms));
+async function run() {
+  await delay(500);  document.getElementById('logo').classList.add('in');
+  await delay(1800); document.getElementById('tagline').classList.add('in');
+  await delay(1800); document.getElementById('spec').classList.add('in');
+  await delay(1600); document.getElementById('urlblock').classList.add('in');
+  await delay(800);
+  document.getElementById('mark').classList.add('pulsing');
+  document.getElementById('url').classList.add('glow');
+}
+run();
+</script>
+</body>
+</html>

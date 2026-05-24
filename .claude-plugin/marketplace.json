@@ -1,0 +1,20 @@
+{
+  "name": "claude-demo-video",
+  "metadata": {
+    "description": "Free 50s product demo film. Edge TTS narration + ffmpeg + Playwright HTML overlays. Single brand.yaml drives palette/voice/scenes/captions."
+  },
+  "owner": {
+    "name": "Marcin Sufa",
+    "email": "sufa.marcin@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "demo-video",
+      "description": "Run `/demo-video init` to scaffold the build into your project, edit brand.yaml, then `/demo-video build` produces final-framed.mp4 in ~75s. Voiceover via Edge TTS (free, no API key). Karaoke word-highlight captions via WordBoundary timing. Knowledge-graph + end-card scenes rendered from HTML + Playwright. Terminal scenes via VHS. Output 1920×1080 H.264, ~3 MB, ~50s.",
+      "author": {"name": "Marcin Sufa"},
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/MarcinSufa/claude-demo-video"
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+# brand.yaml — config for /demo-video
+# All fields are optional and have sensible defaults.
+# See references/brand-config.md for the full schema.
+
+# ─── PROJECT ─────────────────────────────────────────────────────────────
+project:
+  name: "MyProduct"
+  url: "myproduct.com"
+  version_tag: "v0.1.mp4"          # shown in terminal title bar
+
+# ─── PALETTE ─────────────────────────────────────────────────────────────
+# Pro tip: warm dark + 1 accent. Avoid pure black/white.
+palette:
+  bg: "#0a0705"                    # deep terminal bg
+  fg: "#dcd7cf"                    # text foreground (bone/cream)
+  fg_lo: "#a9a49c"                 # dim text
+  fg_faint: "#7a736c"              # faintest (timestamps, labels)
+  accent: "#dbaf71"                # brass/orange highlight (cursor, links)
+  rule: "#29231f"                  # subtle dividers
+  end_card_bg: "#1e1714"           # end-card background (can differ from terminal)
+
+  # Memory-type colors for knowledge graph nodes (optional)
+  memory_type_colors:
+    fact:        "#c9a471"         # amber
+    skill:       "#84b385"         # green
+    decision:    "#c37b7d"         # rose
+    preference:  "#d0c3a7"         # pale gold
+    constraint:  "#7a8ea8"         # blue
+    correction:  "#d3896c"         # orange
+    episodic:    "#a18cc8"         # purple
+    task:        "#c3b16d"         # yellow-green
+
+# ─── LOGO ────────────────────────────────────────────────────────────────
+# Embed your logo as inline SVG. Use 600x400 viewBox for orbital-style logos.
+# For monogram/text-only: use just `wordmark_*` and leave svg_inline as null.
+logo:
+  svg_inline: |
+    <svg viewBox="0 0 600 400" width="260" height="170">
+      <!-- Replace with your logo SVG. Example: orbital "Living Codex" -->
+      <g transform="translate(300 200)">
+        <ellipse cx="0" cy="0" rx="170" ry="55" fill="none" stroke="#f6f2e8" stroke-opacity="0.55" stroke-width="3.5"/>
+        <ellipse cx="0" cy="0" rx="170" ry="55" fill="none" stroke="#f6f2e8" stroke-opacity="0.3" stroke-width="2.5" transform="rotate(60)"/>
+        <ellipse cx="0" cy="0" rx="170" ry="55" fill="none" stroke="#f6f2e8" stroke-opacity="0.3" stroke-width="2.5" transform="rotate(-60)"/>
+        <circle cx="0" cy="0" r="58" fill="#d08b5c" opacity="0.25"/>
+        <circle cx="0" cy="0" r="24" fill="#d08b5c"/>
+      </g>
+    </svg>
+
+  # Wordmark split for italic + roman typographic move (e.g. ExoVault → Exo + Vault)
+  wordmark_italic: "My"            # part rendered italic light
+  wordmark_roman:  "Product"       # part rendered roman medium
+  # OR set wordmark_full to skip the split:
+  # wordmark_full: "MyProduct"
+
+# ─── TYPOGRAPHY ──────────────────────────────────────────────────────────
+# Use Google Fonts names. Skill loads them automatically via <link>.
+typography:
+  display: "Newsreader"            # end-card wordmark serif
+  body: "Geist"                    # UI sans
+  mono: "JetBrains Mono"           # terminals + spec line
+
+# ─── VOICE ───────────────────────────────────────────────────────────────
+# Edge TTS voices: https://gist.github.com/BettyJJ/17cbaa1de96235a7f5773b8690a20462
+# Recommended: AndrewNeural (warm, confident — Anthropic-like)
+voice:
+  provider: "edge-tts"
+  voice_id: "en-US-AndrewNeural"   # try ChristopherNeural (authority), EricNeural (rational)
+  rate: "+0%"                      # -10% slower, +10% faster
+  leading_silence: 0.2             # seconds before first word
+
+# ─── BACKDROP ────────────────────────────────────────────────────────────
+# Photo behind the terminal frame. Recommended: workspace shot with view.
+backdrop:
+  type: "image"                    # "image" | "color" | "gradient"
+
+  # For type: image — local path OR Unsplash URL
+  source: "assets/backdrop.jpg"
+  # Example Unsplash: https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?w=1920&h=1080&fit=crop&q=85
+
+  # For type: color — just set bg color
+  # color: "#0a0705"
+
+  blur: 4                          # 0 = sharp, 8 = strong depth-of-field
+  darken: 0.55                     # 0 = no darken, 1 = black
+
+# ─── SCENES ──────────────────────────────────────────────────────────────
+scenes:
+  speedup: 1.20                    # 1.0 = realtime, 1.30 = faster
+  crossfade_seconds: 0.6           # transition duration between scenes
+
+  # arc: which scene sequence to build.
+  #   "memory-product-default" — built-in 7-scene terminal narrative (CLI/dev tools)
+  #   "custom"                  — YOU define scenes below (real UI, mockups, recordings)
+  arc: "memory-product-default"
+
+  # ─── CUSTOM ARC — real UI / feature demos ────────────────────────────
+  # Only used when arc: "custom". Mix any of these scene types:
+  #   browser_capture  — drive a REAL running app/site + record interactions
+  #   screen_recording — import an existing .mp4 (Screen Studio / OBS)
+  #   html_mockup      — render a local HTML file (like built-in graph/endcards)
+  #   terminal         — built-in terminal scene (hero|input|amnesia|recall|agent:N)
+  #   graph            — built-in knowledge-graph scene
+  #   endcards         — built-in branded end cards
+  custom_scenes:
+    - type: browser_capture
+      url: "http://localhost:3000/dashboard"   # real app, or https://yoursite.com
+      cursor: true
+      settle_ms: 1200
+      tail_ms: 1200
+      actions:
+        - { wait: 1.0 }
+        - { hover: ".sidebar .new-vault" }
+        - { click: "button.new-vault" }
+        - { fill: { selector: "input[name=title]", text: "Research notes" } }
+        - { press: "Enter" }
+        - { scroll: 400 }
+        - { wait: 1.0 }
+    - type: browser_capture
+      url: "http://localhost:3000/graph"
+      actions:
+        - { hover: ".node-fact" }
+        - { wait: 1.5 }
+    - type: screen_recording
+      source: "assets/my-feature-clip.mp4"     # existing recording
+    - type: endcards                            # reuse built-in branded end cards
+
+# ─── VOICEOVER ───────────────────────────────────────────────────────────
+# Each line = one VO segment. Pause is silence after the line.
+# Target: ~12-15 lines, ~80 words total, fits in ~45s for a 50s video.
+# Pacing tip: short sentences, breaths via pauses, NOT commas.
+voiceover:
+  - { text: "Every session starts the same way.", pause_after: 1.1 }
+  - { text: "You explain your stack. Your conventions.", pause_after: 0.3 }
+  - { text: "Why you chose Postgres over Mongo.", pause_after: 2.0 }
+  - { text: "Agents are brilliant.", pause_after: 0.3 }
+  - { text: "And amnesiac.", pause_after: 2.2 }
+  - { text: "MyProduct gives Claude memory that persists.", pause_after: 0.5 }
+  - { text: "Stored as a graph.", pause_after: 0.3 }
+  - { text: "Not a transcript.", pause_after: 0.6 }
+  - { text: "So Claude doesn't search through history.", pause_after: 0.4 }
+  - { text: "It traverses what matters.", pause_after: 0.3 }
+  - { text: "Facts. Decisions. Captured as you work.", pause_after: 1.6 }
+  - { text: "One vault. Every agent you use.", pause_after: 0.9 }
+  - { text: "Memory that compounds.", pause_after: 1.3 }
+  - { text: "Encrypted. Multi agent. MCP native.", pause_after: 1.2 }
+  - { text: "myproduct dot com.", pause_after: 0.5 }
+
+# ─── END CARDS ───────────────────────────────────────────────────────────
+end_cards:
+  tagline: "Memory that compounds."           # italic editorial line
+  spec_line: "encrypted · multi-agent · mcp-native"  # 3 dots in caps
+  url_pill: "myproduct.com"                   # URL in pill at bottom

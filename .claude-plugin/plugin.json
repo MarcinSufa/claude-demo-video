@@ -1,0 +1,27 @@
+{
+  "name": "demo-video",
+  "version": "0.1.0",
+  "description": "Produce a 50-second product demo video — voiceover (Edge TTS), karaoke captions, knowledge-graph animation, terminal scenes (VHS), and a real-photo terminal-on-desk backdrop. Zero paid services, single brand.yaml drives the whole thing.",
+  "author": {
+    "name": "Marcin Sufa",
+    "email": "sufa.marcin@gmail.com"
+  },
+  "homepage": "https://github.com/MarcinSufa/claude-demo-video",
+  "repository": "https://github.com/MarcinSufa/claude-demo-video",
+  "license": "MIT",
+  "skills": "./",
+  "keywords": [
+    "video",
+    "demo",
+    "product-video",
+    "voiceover",
+    "edge-tts",
+    "captions",
+    "karaoke",
+    "ffmpeg",
+    "playwright",
+    "vhs",
+    "marketing",
+    "launch-film"
+  ]
+}

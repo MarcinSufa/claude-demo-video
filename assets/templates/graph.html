@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en" style="background:{{palette_bg}}">
+<head>
+<style>html,body{background:{{palette_bg}} !important;}</style>
+<meta charset="utf-8" />
+<title>{{project_name}} Knowledge Graph</title>
+<script src="https://unpkg.com/vis-network@9.1.13/standalone/umd/vis-network.min.js"></script>
+<style>
+  :root {
+    /* Vellum palette */
+    --bg: {{palette_bg}};
+    --bg-raised: #100c0a;
+    --rule: {{palette_rule}};
+    --bone: {{palette_fg}};
+    --bone-lo: {{palette_fg_lo}};
+    --bone-faint: {{palette_fg_faint}};
+    --brass: {{palette_accent}};
+    --brass-dim: #a37e53;
+
+    /* Memory types */
+    --m-fact: {{mem_fact}};
+    --m-skill: {{mem_skill}};
+    --m-decision: {{mem_decision}};
+    --m-preference: {{mem_preference}};
+    --m-constraint: {{mem_constraint}};
+    --m-correction: {{mem_correction}};
+    --m-episodic: {{mem_episodic}};
+    --m-task: {{mem_task}};
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--bone); height: 100%; overflow: hidden; }
+  body {
+    font-family: "Geist", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+  }
+  #graph { width: 100vw; height: 100vh; }
+
+  /* Editorial overlay label */
+  .hud {
+    position: fixed;
+    top: 32px; left: 40px;
+    color: var(--bone-lo);
+    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+  }
+  .hud.in { opacity: 1; }
+  .hud .brass { color: var(--brass); }
+  .hud .row { margin-top: 6px; }
+  .hud .row strong { color: var(--bone); font-weight: 500; }
+
+  /* Editorial caption — bottom right */
+  .caption {
+    position: fixed;
+    bottom: 36px; right: 48px;
+    color: var(--bone-faint);
+    font-family: "Newsreader", "Instrument Serif", Georgia, serif;
+    font-style: italic;
+    font-size: 22px;
+    line-height: 1.3;
+    text-align: right;
+    max-width: 360px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 1.4s ease;
+  }
+  .caption.in { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+
+<div class="hud" id="hud">
+  <div><span class="brass">◐ {{project_name}}</span> &nbsp;knowledge graph</div>
+  <div class="row"><strong id="hud-mem">0</strong> memories &nbsp;·&nbsp; <strong id="hud-edge">0</strong> links</div>
+</div>
+
+<div class="caption" id="caption">
+  Stored as a graph.<br>
+  Not a transcript.
+</div>
+
+<script>
+const C = getComputedStyle(document.documentElement);
+const palette = {
+  fact:       C.getPropertyValue('--m-fact').trim(),
+  skill:      C.getPropertyValue('--m-skill').trim(),
+  decision:   C.getPropertyValue('--m-decision').trim(),
+  preference: C.getPropertyValue('--m-preference').trim(),
+  constraint: C.getPropertyValue('--m-constraint').trim(),
+  correction: C.getPropertyValue('--m-correction').trim(),
+  episodic:   C.getPropertyValue('--m-episodic').trim(),
+  task:       C.getPropertyValue('--m-task').trim(),
+};
+const bg = C.getPropertyValue('--bg').trim();
+const rule = C.getPropertyValue('--rule').trim();
+const bone = C.getPropertyValue('--bone').trim();
+const boneLo = C.getPropertyValue('--bone-lo').trim();
+const brass = C.getPropertyValue('--brass').trim();
+
+// Knowledge graph data — what a real {{project_name}} session might hold
+const SEED = [
+  { id: 'core', type: 'episodic', label: 'session\norigin', size: 28 },
+  { id: 'pg',   type: 'fact',       label: 'postgres' },
+  { id: 'drz',  type: 'fact',       label: 'drizzle orm' },
+  { id: 'hono', type: 'decision',   label: 'hono\n(not express)' },
+  { id: 'pnpm', type: 'fact',       label: 'pnpm\nworkspaces' },
+  { id: 'vtest',type: 'fact',       label: 'vitest' },
+  { id: 'mock', type: 'constraint', label: 'no db\nmocks' },
+  { id: 'comp', type: 'preference', label: 'composition\nover inheritance' },
+  { id: 'role', type: 'task',       label: 'user.role\nmiddleware' },
+  { id: 'mig',  type: 'correction', label: 'express → hono\nmigration' },
+  { id: 'rls',  type: 'skill',      label: 'RLS\nper-user policies' },
+  { id: 'mcp',  type: 'fact',       label: 'MCP gateway\nmode' },
+];
+
+const EDGES = [
+  ['core','pg'], ['core','hono'], ['core','role'], ['core','comp'],
+  ['pg','drz'], ['pg','rls'],
+  ['hono','mig'], ['mig','role'],
+  ['drz','vtest'], ['vtest','mock'],
+  ['pnpm','vtest'], ['pnpm','mcp'],
+  ['comp','hono'], ['rls','mcp'],
+  ['role','rls'],
+];
+
+function buildNode(seed, i) {
+  const color = palette[seed.type] || brass;
+  const isCore = seed.id === 'core';
+  const radius = seed.size || (isCore ? 26 : 18);
+  return {
+    id: seed.id,
+    label: seed.label,
+    shape: 'dot',
+    size: radius,
+    color: {
+      background: color,
+      border: isCore ? brass : color,
+      highlight: { background: color, border: bone },
+    },
+    font: {
+      color: isCore ? brass : bone,
+      face: 'JetBrains Mono, ui-monospace, monospace',
+      size: isCore ? 13 : 11,
+      multi: false,
+      vadjust: -42,
+      strokeWidth: 4,
+      strokeColor: bg,
+    },
+    borderWidth: isCore ? 2.5 : 1,
+    shadow: { enabled: true, color: color + 'aa', size: isCore ? 40 : 18, x: 0, y: 0 },
+  };
+}
+
+const nodes = new vis.DataSet();
+const edges = new vis.DataSet();
+const container = document.getElementById('graph');
+
+const options = {
+  autoResize: true,
+  physics: {
+    enabled: true,
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: -95,
+      springLength: 190,
+      springConstant: 0.035,
+      damping: 0.88,
+      avoidOverlap: 1.0,
+    },
+    stabilization: { iterations: 240, updateInterval: 25 },
+    timestep: 0.4,
+  },
+  interaction: { hover: false, dragNodes: false, dragView: false, zoomView: false, selectable: false },
+  edges: {
+    color: { color: rule, highlight: brass },
+    width: 0.8,
+    smooth: { enabled: true, type: 'continuous', roundness: 0.4 },
+    shadow: false,
+  },
+};
+
+const network = new vis.Network(container, { nodes, edges }, options);
+
+// === Animation orchestration ===
+const hud = document.getElementById('hud');
+const caption = document.getElementById('caption');
+const hudMem = document.getElementById('hud-mem');
+const hudEdge = document.getElementById('hud-edge');
+
+let memCount = 0, edgeCount = 0;
+function bumpHud() {
+  hudMem.textContent = memCount;
+  hudEdge.textContent = edgeCount;
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function run() {
+  // Phase 0 — HUD appears
+  await delay(300);
+  hud.classList.add('in');
+
+  // Phase 1 — central node, then memories appear staggered
+  nodes.add(buildNode(SEED[0], 0)); memCount = 1; bumpHud();
+  await delay(600);
+
+  for (let i = 1; i < SEED.length; i++) {
+    nodes.add(buildNode(SEED[i], i));
+    memCount++; bumpHud();
+    await delay(180);
+  }
+
+  // Phase 2 — edges draw progressively
+  await delay(400);
+  for (const [from, to] of EDGES) {
+    edges.add({ from, to });
+    edgeCount++; bumpHud();
+    await delay(120);
+  }
+
+  // Phase 3 — caption appears
+  await delay(600);
+  caption.classList.add('in');
+
+  // Phase 4 — gentle settle + slow drift
+  await delay(2200);
+
+  // Optional: pulse the core node to feel "recall"
+  const pulses = ['core', 'hono', 'role', 'mig'];
+  for (const id of pulses) {
+    const n = nodes.get(id);
+    if (!n) continue;
+    nodes.update({ id, shadow: { enabled: true, color: brass + 'cc', size: 36, x: 0, y: 0 }, borderWidth: 2, color: { ...n.color, border: brass } });
+    await delay(280);
+    nodes.update({ id, shadow: n.shadow, borderWidth: 1, color: n.color });
+  }
+}
+
+network.once('stabilized', () => {
+  network.fit({ animation: { duration: 800, easingFunction: 'easeOutCubic' } });
+});
+
+run();
+</script>
+</body>
+</html>

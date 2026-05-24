@@ -1,0 +1,36 @@
+# Pipeline outputs
+videos/
+.normalized/
+.vo/
+*.webm
+*.mp4
+*.mp3
+!assets/**/*.mp4
+!assets/**/*.mp3
+
+# Backdrop (large, often Unsplash)
+assets/backdrop.jpg
+assets/backdrop*.jpg
+
+# Build artifacts
+*.log
+cloudflared.exe
+cloudflared
+
+# Node
+node_modules/
+package.json
+package-lock.json
+pnpm-lock.yaml
+
+# Python
+__pycache__/
+*.pyc
+
+# Local config
+brand.yaml
+!assets/brand.example.yaml
+
+# OS
+.DS_Store
+Thumbs.db
