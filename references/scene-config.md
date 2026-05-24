@@ -1,7 +1,49 @@
-# Scene types & custom arcs
+# Scene types, count & custom arcs
 
-The default `arc: memory-product-default` builds a fixed 7-scene terminal narrative.
-For **real UI / feature demos**, set `arc: custom` and define `scenes.custom_scenes`.
+## Choosing how many scenes (and which)
+
+Three ways, most-explicit wins:
+
+**1. `scenes.sequence`** — pick the EXACT scenes and count (recommended). Mix
+built-in names with custom scene objects, any count ≥ 2:
+
+```yaml
+scenes:
+  sequence: [hero, graph, endcards]          # tight 3-scene cut
+```
+```yaml
+scenes:
+  sequence:
+    - hero
+    - { type: browser_capture, url: "http://localhost:3000", actions: [{ scroll: 400 }] }
+    - endcards                                # built-in + real UI
+```
+Built-in names: `hero`, `typing`, `amnesia`, `graph`, `recall`, `multi-agent`, `endcards`.
+
+**2. `arc` preset** — named shortcut that expands to a sequence:
+- `memory-product-default` → 7 scenes (hero·typing·amnesia·graph·recall·multi-agent·endcards)
+- `short` → 3 (hero·graph·endcards)
+- `problem-solution` → 5 (hero·amnesia·graph·recall·endcards)
+
+**3. `arc: custom` + `custom_scenes`** — legacy all-custom list (same as sequence of objects).
+
+## Music
+
+```yaml
+music:
+  mode: "procedural"   # procedural | file | none
+  volume: 0.45         # bed level, auto-ducked under voice
+  # file: "assets/track.mp3"   # for mode: file
+```
+- **procedural** — generated warm ambient pad (default, placeholder quality)
+- **file** — your own track. Free/CC0 sources: Pixabay Music, Free Music Archive, YouTube Audio Library
+- **none** — voice only, no bed
+
+---
+
+## Scene types (for custom scenes / sequence objects)
+
+For **real UI / feature demos**, use scene objects in `sequence` (or `custom_scenes`).
 
 ## Scene types
 

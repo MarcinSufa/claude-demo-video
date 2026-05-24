@@ -252,6 +252,7 @@ def main():
         "palette": brand.get("palette", {}),
         "memory_colors": mem,
         "project": brand.get("project", {}),
+        "music": brand.get("music", {"mode": "procedural", "volume": 0.45}),
     }
     with open(os.path.join(args.out, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)

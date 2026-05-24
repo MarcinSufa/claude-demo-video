@@ -68,6 +68,19 @@ voice:
   rate: "+0%"                      # -10% slower, +10% faster
   leading_silence: 0.2             # seconds before first word
 
+# ─── MUSIC ───────────────────────────────────────────────────────────────
+music:
+  mode: "procedural"               # "procedural" | "file" | "none"
+  volume: 0.45                     # bed level (ducked under voice automatically)
+
+  # mode: file — supply your own track. FREE sources (no attribution / CC0):
+  #   • Pixabay Music      https://pixabay.com/music/  (filter "no attribution")
+  #   • Free Music Archive https://freemusicarchive.org/genre/Ambient/ (CC0)
+  #   • YouTube Audio Library (in YouTube Studio, free for any use)
+  # file: "assets/track.mp3"       # local path (project root or assets/)
+
+  # mode: none — voice only, no music bed.
+
 # ─── BACKDROP ────────────────────────────────────────────────────────────
 # Photo behind the terminal frame. Recommended: workspace shot with view.
 backdrop:
@@ -88,10 +101,28 @@ scenes:
   speedup: 1.20                    # 1.0 = realtime, 1.30 = faster
   crossfade_seconds: 0.6           # transition duration between scenes
 
-  # arc: which scene sequence to build.
-  #   "memory-product-default" — built-in 7-scene terminal narrative (CLI/dev tools)
-  #   "custom"                  — YOU define scenes below (real UI, mockups, recordings)
+  # ── HOW MANY SCENES? Three ways, most-explicit wins ──────────────────
+  #
+  # 1) scenes.sequence — pick EXACTLY which scenes and how many (recommended).
+  #    Mix built-in names with custom scene objects. Any count >= 2.
+  #    Built-in names: hero, typing, amnesia, graph, recall, multi-agent, endcards
+  #
+  # sequence:
+  #   - hero
+  #   - graph
+  #   - endcards            # → a tight 3-scene cut
+  #
+  # sequence:
+  #   - hero
+  #   - { type: browser_capture, url: "http://localhost:3000", actions: [{ scroll: 400 }] }
+  #   - endcards            # → built-in + real UI, 3 scenes
+  #
+  # 2) arc preset — a named shortcut that expands to a sequence:
   arc: "memory-product-default"
+  #    presets: "memory-product-default" (7), "short" (3: hero/graph/endcards),
+  #             "problem-solution" (5: hero/amnesia/graph/recall/endcards)
+  #
+  # 3) arc: "custom" + custom_scenes (below) — legacy all-custom list.
 
   # ─── CUSTOM ARC — real UI / feature demos ────────────────────────────
   # Only used when arc: "custom". Mix any of these scene types:

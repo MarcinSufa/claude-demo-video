@@ -1,10 +1,40 @@
 #!/usr/bin/env bash
-# Generates a soft warm ambient pad as placeholder music (60s).
-# Procedural — uses ffmpeg sine waves + reverb + lowpass for a warm drone.
-# Replace with a real licensed track before publishing.
+# Provides the music bed. Three modes (from brand.yaml music.mode):
+#   procedural — generate a soft warm ambient pad (ffmpeg sine + reverb). DEFAULT.
+#   file       — use a real track you supply (music.file). Free sources:
+#                  Pixabay Music, Free Music Archive (CC0), YouTube Audio Library.
+#   none       — no music bed (voice only).
 set -e
 cd "$(dirname "$0")"
 
+CFG="${DEMO_CONFIG:-config.json}"
+MODE="procedural"; MFILE=""
+if [ -f "$CFG" ]; then
+  MODE=$(python -c "import json;print(json.load(open('$CFG')).get('music',{}).get('mode','procedural'))")
+  MFILE=$(python -c "import json;print(json.load(open('$CFG')).get('music',{}).get('file',''))")
+fi
+
+case "$MODE" in
+  none)
+    echo "music mode: none — skipping music bed"
+    rm -f music.mp3
+    : > .music-none   # sentinel so mix-final knows to skip
+    exit 0 ;;
+  file)
+    [ -f .music-none ] && rm -f .music-none
+    # Resolve file relative to project root (one level up from .build) or absolute
+    SRC="$MFILE"
+    [ -f "$SRC" ] || SRC="../$MFILE"
+    [ -f "$SRC" ] || { echo "music.mode=file but '$MFILE' not found (looked in .build and project root)"; exit 1; }
+    echo "music mode: file — using $MFILE"
+    # Normalize to mp3 192k so mix-final treats it uniformly
+    ffmpeg -y -hide_banner -loglevel error -i "$SRC" -c:a libmp3lame -b:a 192k -ar 44100 music.mp3
+    echo "Done -> music.mp3 (from $MFILE)"
+    exit 0 ;;
+esac
+
+# ── procedural (default) ──
+[ -f .music-none ] && rm -f .music-none
 DUR=60
 
 # C minor chord — C3 + Eb3 + G3 + C4 — soft and contemplative
@@ -29,4 +59,4 @@ ffmpeg -y -hide_banner -loglevel error \
   -c:a libmp3lame -b:a 192k -ar 44100 \
   music.mp3
 
-echo "Done → music.mp3 (${DUR}s warm pad placeholder)"
+echo "Done -> music.mp3 (${DUR}s procedural warm pad)"
