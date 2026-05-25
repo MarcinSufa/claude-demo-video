@@ -89,6 +89,9 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                 "warmup": should_warmup(sc["url"], sc.get("warmup")),
                 # P2-1: reuse the saved login session (storageState from the auth block)
                 "auth": bool(sc.get("auth", False)),
+                # Trim the head of the clip (ms) — skip a slow app boot/auth splash.
+                # Unset → record-browser auto-trims to ~1s before the app was ready.
+                "trim_start_ms": sc.get("trim_start_ms"),
             }
         elif t == "html_mockup":
             # Render a local HTML via the same browser engine, served by the http server

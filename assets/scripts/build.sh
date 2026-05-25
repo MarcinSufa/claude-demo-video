@@ -108,7 +108,9 @@ fi
 # ─── 2-8. Pipeline ──────────────────────────────────────────────────────
 step 26 "Voiceover (Edge TTS)";     python make-vo.py
 step 34 "Captions";                 python make-captions.py
-[ -f music.mp3 ] || { step 40 "Music bed"; bash make-music.sh; }
+# Always (re)generate so a changed music.mode/style/file actually takes effect
+# (previously cached by file existence, so style changes were silently ignored).
+step 40 "Music bed"; bash make-music.sh
 # P2-1: log in once if an auth block is configured (authed scenes reuse the session)
 if [ "$(python -c "import json;print(bool(json.load(open('config.json')).get('auth',{}).get('login_url')))")" = "True" ]; then
   step 46 "Auth login (storageState)"; node make-auth.mjs

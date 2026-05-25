@@ -115,6 +115,7 @@ if (scene.warmup) {
   await warm.close();
 }
 
+const recStart = Date.now();   // recording starts at context creation
 const context = await browser.newContext({
   viewport: { width: W, height: H },
   deviceScaleFactor: scene.deviceScaleFactor ?? 1,
@@ -129,9 +130,14 @@ if (scene.bg) {
 if (WANT_CURSOR) await context.addInitScript(CURSOR_JS);
 
 const page = await context.newPage();
+let navOk = true;
 await page.goto(scene.url, { waitUntil: 'networkidle' }).catch(e => {
+  navOk = false;   // timeout/error → readyAt is unreliable (≈ the goto timeout)
   console.warn('navigation warning:', e.message);
 });
+// networkidle ≈ the app finished its boot/auth splash and rendered. Remember how long
+// that took (only meaningful when nav succeeded) so we can trim most of the splash.
+const readyAt = (Date.now() - recStart) / 1000;
 await page.waitForTimeout(SETTLE);
 
 for (const action of scene.actions ?? []) {
@@ -153,15 +159,29 @@ await page.waitForTimeout(TAIL);
 await context.close();
 await browser.close();
 
-// webm → mp4, trim first 300ms (pre-paint white)
+// webm → mp4. Trim the head: 300ms by default (pre-paint white), or `trim_start_ms`
+// to skip a slow app boot/auth splash so the loading reads as ~1-2s instead of ~5s.
 const webms = readdirSync(VID_DIR).filter(f => f.endsWith('.webm'))
   .map(f => ({ f, m: statSync(join(VID_DIR, f)).mtimeMs })).sort((a, b) => b.m - a.m);
 if (!webms.length) { console.error('No video recorded'); process.exit(1); }
 const webm = join(VID_DIR, webms[0].f);
 
+// Default: auto-trim to ~1s before the app was ready (skips a slow boot/auth splash).
+// Override with an explicit trim_start_ms. If navigation failed/timed out, readyAt is
+// unreliable (≈ the goto timeout), so fall back to a tiny trim and never over-trim.
+const KEEP_LOADING_S = 1.0;
+const MAX_AUTO_TRIM_S = 12;   // guard: never cut into real content on a slow/timed-out load
+let trimStart = 0.3;          // safe default (just the pre-paint frame)
+if (scene.trim_start_ms != null) {
+  trimStart = scene.trim_start_ms / 1000;
+} else if (navOk && Number.isFinite(readyAt) && readyAt > KEEP_LOADING_S) {
+  trimStart = Math.min(MAX_AUTO_TRIM_S, readyAt - KEEP_LOADING_S);
+}
+const readyLabel = (navOk && Number.isFinite(readyAt)) ? `~${readyAt.toFixed(1)}s` : '(nav incomplete)';
+console.log(`  ready ${readyLabel} · trimming first ${trimStart.toFixed(1)}s`);
 const res = spawnSync('ffmpeg', [
   '-y', '-hide_banner', '-loglevel', 'error',
-  '-ss', '0.3', '-i', webm,
+  '-ss', String(trimStart), '-i', webm,
   '-c:v', 'libx264', '-preset', 'slow', '-crf', '18',
   '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
   OUTPUT,
