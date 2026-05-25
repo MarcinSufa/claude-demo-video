@@ -115,6 +115,7 @@ if (scene.warmup) {
   await warm.close();
 }
 
+const recStart = Date.now();   // recording starts at context creation
 const context = await browser.newContext({
   viewport: { width: W, height: H },
   deviceScaleFactor: scene.deviceScaleFactor ?? 1,
@@ -132,6 +133,9 @@ const page = await context.newPage();
 await page.goto(scene.url, { waitUntil: 'networkidle' }).catch(e => {
   console.warn('navigation warning:', e.message);
 });
+// networkidle ≈ the app finished its boot/auth splash and rendered. Remember how long
+// that took so we can trim most of the splash and keep the loading to ~1s.
+const readyAt = (Date.now() - recStart) / 1000;
 await page.waitForTimeout(SETTLE);
 
 for (const action of scene.actions ?? []) {
@@ -153,15 +157,23 @@ await page.waitForTimeout(TAIL);
 await context.close();
 await browser.close();
 
-// webm → mp4, trim first 300ms (pre-paint white)
+// webm → mp4. Trim the head: 300ms by default (pre-paint white), or `trim_start_ms`
+// to skip a slow app boot/auth splash so the loading reads as ~1-2s instead of ~5s.
 const webms = readdirSync(VID_DIR).filter(f => f.endsWith('.webm'))
   .map(f => ({ f, m: statSync(join(VID_DIR, f)).mtimeMs })).sort((a, b) => b.m - a.m);
 if (!webms.length) { console.error('No video recorded'); process.exit(1); }
 const webm = join(VID_DIR, webms[0].f);
 
+// Default: auto-trim to ~1s before the app was ready (skips a slow boot/auth splash).
+// Override with an explicit trim_start_ms. Falls back to 0.3s if readiness is unknown.
+const KEEP_LOADING_S = 1.0;
+const trimStart = (scene.trim_start_ms != null)
+  ? scene.trim_start_ms / 1000
+  : Math.max(0.3, (readyAt || 1.3) - KEEP_LOADING_S);
+console.log(`  ready ~${readyAt.toFixed(1)}s · trimming first ${trimStart.toFixed(1)}s`);
 const res = spawnSync('ffmpeg', [
   '-y', '-hide_banner', '-loglevel', 'error',
-  '-ss', '0.3', '-i', webm,
+  '-ss', String(trimStart), '-i', webm,
   '-c:v', 'libx264', '-preset', 'slow', '-crf', '18',
   '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
   OUTPUT,
