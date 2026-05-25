@@ -1,6 +1,6 @@
 {
   "name": "demo-video",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Turn your app or UI into a ~50s feature film — record your real running app (or an HTML mockup, or a terminal), narrated with AI voiceover, synced karaoke captions, a music bed, and your brand's palette/fonts/end-cards. Free tools only; one brand.yaml drives it.",
   "author": {
     "name": "Marcin Sufa",

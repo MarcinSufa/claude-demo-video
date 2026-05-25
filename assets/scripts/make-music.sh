@@ -52,7 +52,8 @@ if [ "$STYLE" = "uplift" ]; then
       -f lavfi -i "sine=frequency=$f3:duration=$CHORD" \
       -filter_complex "[0]volume=0.42[a];[1]volume=0.3[b];[2]volume=0.24[c];[a][b][c]amix=inputs=3:normalize=0,afade=t=in:st=0:d=0.5,afade=t=out:st=$(awk "BEGIN{print $CHORD-1}"):d=1" \
       "$WORK/seg_$idx.wav"
-    echo "file '$(pwd)/$WORK/seg_$idx.wav'" >> "$LIST"; idx=$((idx+1))
+    # concat resolves paths relative to the LIST file's own dir, so just the filename
+    echo "file 'seg_$idx.wav'" >> "$LIST"; idx=$((idx+1))
   done; done
   ffmpeg -y -hide_banner -loglevel error -f concat -safe 0 -i "$LIST" \
     -filter_complex "aecho=0.8:0.6:600|1200:0.3|0.18,lowpass=f=2400,highpass=f=70,dynaudnorm=f=400:g=15,afade=t=in:st=0:d=2,afade=t=out:st=$(awk "BEGIN{print $DUR-5}"):d=5" \
