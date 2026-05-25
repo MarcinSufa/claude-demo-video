@@ -130,11 +130,13 @@ if (scene.bg) {
 if (WANT_CURSOR) await context.addInitScript(CURSOR_JS);
 
 const page = await context.newPage();
+let navOk = true;
 await page.goto(scene.url, { waitUntil: 'networkidle' }).catch(e => {
+  navOk = false;   // timeout/error → readyAt is unreliable (≈ the goto timeout)
   console.warn('navigation warning:', e.message);
 });
 // networkidle ≈ the app finished its boot/auth splash and rendered. Remember how long
-// that took so we can trim most of the splash and keep the loading to ~1s.
+// that took (only meaningful when nav succeeded) so we can trim most of the splash.
 const readyAt = (Date.now() - recStart) / 1000;
 await page.waitForTimeout(SETTLE);
 
@@ -165,12 +167,18 @@ if (!webms.length) { console.error('No video recorded'); process.exit(1); }
 const webm = join(VID_DIR, webms[0].f);
 
 // Default: auto-trim to ~1s before the app was ready (skips a slow boot/auth splash).
-// Override with an explicit trim_start_ms. Falls back to 0.3s if readiness is unknown.
+// Override with an explicit trim_start_ms. If navigation failed/timed out, readyAt is
+// unreliable (≈ the goto timeout), so fall back to a tiny trim and never over-trim.
 const KEEP_LOADING_S = 1.0;
-const trimStart = (scene.trim_start_ms != null)
-  ? scene.trim_start_ms / 1000
-  : Math.max(0.3, (readyAt || 1.3) - KEEP_LOADING_S);
-console.log(`  ready ~${readyAt.toFixed(1)}s · trimming first ${trimStart.toFixed(1)}s`);
+const MAX_AUTO_TRIM_S = 12;   // guard: never cut into real content on a slow/timed-out load
+let trimStart = 0.3;          // safe default (just the pre-paint frame)
+if (scene.trim_start_ms != null) {
+  trimStart = scene.trim_start_ms / 1000;
+} else if (navOk && Number.isFinite(readyAt) && readyAt > KEEP_LOADING_S) {
+  trimStart = Math.min(MAX_AUTO_TRIM_S, readyAt - KEEP_LOADING_S);
+}
+const readyLabel = (navOk && Number.isFinite(readyAt)) ? `~${readyAt.toFixed(1)}s` : '(nav incomplete)';
+console.log(`  ready ${readyLabel} · trimming first ${trimStart.toFixed(1)}s`);
 const res = spawnSync('ffmpeg', [
   '-y', '-hide_banner', '-loglevel', 'error',
   '-ss', String(trimStart), '-i', webm,
