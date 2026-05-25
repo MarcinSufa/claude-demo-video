@@ -17,6 +17,8 @@ A single `videos/final-framed.mp4` (1920×1080, ~50s) that shows **how your appl
 
 Built entirely with **free tools** — `ffmpeg`, Playwright headless Chromium, VHS (Charm), `edge-tts`. No Synthesia / HeyGen / After Effects subscription.
 
+> **Free to render** — no API keys, no per-video fees, no subscriptions; the whole toolchain runs locally. Authoring the brand, scenes, and script is the real work — a few minutes by hand, or with an AI assistant like Claude Code (which is where the time and tokens go).
+
 ## Scene types — compose your own video
 
 You pick the scenes and their order in `brand.yaml` (`scenes.sequence`). Every scene gets the same voiceover, captions, music and framing treatment:
