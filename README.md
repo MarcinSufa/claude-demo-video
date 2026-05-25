@@ -124,6 +124,22 @@ record-frame.mjs  → final-framed.mp4           (optional window-on-desk compos
 
 Scene captures are **cached** — edit only the voiceover and the next build reuses every clip. See [references/workflow.md](./references/workflow.md).
 
+## Architecture
+
+`/demo-video` is a small **polyglot pipeline** — not one program, but a chain of tools each doing what it's best at, all driven by a single `brand.yaml`. (The step-by-step flow is under [How it works](#how-it-works) above.)
+
+**The layers**
+
+- **Python — the brains.** Config + orchestration math: the brand compiler (`apply-brand.py`), voiceover and caption generation, scene planning, the timing model + the *truncation gate* (`timing_util.py` / `check-timing.py`), opt-in auto-fit, per-scene duration pinning, scene-capture cache hashing, and arc-aware prerequisite checks. The pure logic is unit-tested (`tests/`, `python -m unittest discover -s tests`).
+- **Node + Playwright — the camera.** Anything that drives a browser: capturing your real running app (`record-browser.mjs`), the HTML scenes (knowledge graph, end cards, mockups), the one-time login (`make-auth.mjs`), and the window-on-desk frame snapshot — plus a smooth fake cursor and an auto-trim for slow boot/auth splashes.
+- **ffmpeg — the editor.** Every pixel and audio operation: normalize, crossfade, speed, sidechain-duck the music under the voice, burn captions, composite the frame.
+- **Edge TTS** (free Microsoft neural voices, no API key) · **VHS / Charm** (terminal scenes) · **HTML/CSS** templates (end cards, graph, mockups) · **YAML** (the one config file).
+
+**Generated vs. authored**
+
+- *Generated automatically* (and cached): the voiceover, synced captions, music bed, scene captures, crossfades, timing fit, and the final mp4. The render is deterministic and **free** — no API keys, no per-video fees, no LLM calls.
+- *Authored by you (or an AI assistant)*: the `brand.yaml` — palette/fonts/logo, the **scene actions** (which elements to click, the multi-select steps), and the **voiceover script**. That's the creative work — and the only place LLM tokens are spent.
+
 ## Why I built this
 
 After analyzing Anthropic's "Agent view in Claude Code" film and trying to reproduce that aesthetic, I rebuilt the pipeline from scratch — Edge TTS sync, Playwright capture, ffmpeg xfade math, sidechain ducking, karaoke caption timing — and it ended up reusable across projects, so I packaged it.
