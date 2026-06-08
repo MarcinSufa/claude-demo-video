@@ -17,6 +17,12 @@
 //   "bg": "#0a0705",              // P2-3: paint this before first paint (anti white-flash)
 //   "settle_ms": 1200,            // wait after load before acting
 //   "tail_ms": 1500,              // hold at end
+//   "clip": ".schedules-dialog",  // SHOW THE PART YOU'RE CHANGING: crop+zoom the output
+//                                 //   to this element so the viewer sees the control the
+//                                 //   change touches, not the whole page. Measured at the
+//                                 //   END of the scene (so a dialog opened mid-scene is on
+//                                 //   screen). Also accepts { "selector": "…", "pad": 40 }
+//                                 //   or an explicit { "x":.., "y":.., "width":.., "height":.. }.
 //   "actions": [
 //     { "hover": ".sidebar-item" },
 //     { "click": "button.new" },
@@ -24,6 +30,7 @@
 //     { "type": "hello world" },
 //     { "press": "Enter" },
 //     { "scroll": 500 },
+//     { "scroll_into_view": ".load-row" },   // bring an off-screen element into view
 //     { "wait": 1.5 }
 //   ]
 // }
@@ -48,6 +55,7 @@ const VID_DIR = join(OUT_DIR, '.webm-tmp');
 const SETTLE = scene.settle_ms ?? 1200;
 const TAIL = scene.tail_ms ?? 1500;
 const WANT_CURSOR = scene.cursor !== false;
+const CLIP = scene.clip ?? null;   // crop+zoom the output to the changed UI region
 
 mkdirSync(OUT_DIR, { recursive: true });
 mkdirSync(VID_DIR, { recursive: true });
@@ -148,10 +156,38 @@ for (const action of scene.actions ?? []) {
     else if (action.type) { await page.keyboard.type(action.type, { delay: 55 }); }
     else if (action.press) { await page.keyboard.press(action.press); }
     else if (typeof action.scroll === 'number') { await page.mouse.wheel(0, action.scroll); }
+    else if (action.scroll_into_view) { await page.locator(action.scroll_into_view).first().scrollIntoViewIfNeeded().catch(() => {}); }
     else if (action.wait) { await page.waitForTimeout(action.wait * 1000); }
     await page.waitForTimeout(250);
   } catch (e) {
     console.warn(`action failed (${JSON.stringify(action)}): ${e.message}`);
+  }
+}
+
+// `clip` — resolve the crop-to-region NOW (after actions), so the element you're
+// changing (e.g. a dialog opened mid-scene) is on screen when we measure it.
+let cropFilter = '';
+if (CLIP) {
+  const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+  let rect = null;
+  if (typeof CLIP === 'string' || CLIP.selector) {
+    const sel = typeof CLIP === 'string' ? CLIP : CLIP.selector;
+    const pad = (typeof CLIP === 'object' && CLIP.pad != null) ? CLIP.pad : 32;
+    const box = await page.locator(sel).first().boundingBox().catch(() => null);
+    if (box) rect = { x: box.x - pad, y: box.y - pad, width: box.width + pad * 2, height: box.height + pad * 2 };
+    else console.warn(`  clip selector "${sel}" not found — recording the full frame`);
+  } else if (CLIP.width && CLIP.height) {
+    rect = { x: CLIP.x ?? 0, y: CLIP.y ?? 0, width: CLIP.width, height: CLIP.height };
+  }
+  if (rect) {
+    const cx = Math.max(0, Math.min(W - 2, Math.round(rect.x)));
+    const cy = Math.max(0, Math.min(H - 2, Math.round(rect.y)));
+    const cw = even(Math.min(rect.width, W - cx));
+    const ch = even(Math.min(rect.height, H - cy));
+    // Crop to the region, then upscale back to the scene size so every scene keeps
+    // identical dimensions for assemble.sh's crossfade/concat.
+    cropFilter = `crop=${cw}:${ch}:${cx}:${cy},scale=${W}:${H}:flags=lanczos`;
+    console.log(`  clip -> crop ${cw}x${ch}+${cx}+${cy}, rescaled to ${W}x${H}`);
   }
 }
 
@@ -182,6 +218,7 @@ console.log(`  ready ${readyLabel} · trimming first ${trimStart.toFixed(1)}s`);
 const res = spawnSync('ffmpeg', [
   '-y', '-hide_banner', '-loglevel', 'error',
   '-ss', String(trimStart), '-i', webm,
+  ...(cropFilter ? ['-vf', cropFilter] : []),
   '-c:v', 'libx264', '-preset', 'slow', '-crf', '18',
   '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
   OUTPUT,

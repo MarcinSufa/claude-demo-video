@@ -60,6 +60,7 @@ smooth fake cursor, trims the pre-paint frame. This is how you demo **actual UI*
   tail_ms: 1500             # hold at the end
   viewport: { width: 1920, height: 1080 }
   duration: 6               # optional — pin the clip to EXACTLY 6s (see below)
+  clip: ".schedules-dialog" # optional — crop+zoom to the element you're changing
   actions:
     - { wait: 1.0 }                                          # pause N seconds
     - { hover: ".sidebar .new-vault" }                       # glide + hover selector
@@ -68,7 +69,25 @@ smooth fake cursor, trims the pre-paint frame. This is how you demo **actual UI*
     - { type: "typed character by character" }               # type into focused el
     - { press: "Enter" }                                     # keyboard key
     - { scroll: 400 }                                        # wheel down (negative = up)
+    - { scroll_into_view: ".load-row" }                      # bring an off-screen el into view
 ```
+
+**`clip` — frame the change, not the whole page.** When a demo is about one
+control/dialog/row, record the full page but crop+zoom the output to that element so
+viewers actually see what changed:
+
+```yaml
+clip: ".schedules-dialog"               # selector (default 32px padding)
+clip: { selector: ".load-row", pad: 48 }  # selector + custom padding
+clip: { x: 600, y: 300, width: 720, height: 480 }   # explicit rect
+```
+
+The element is measured at the **end** of the scene (so a dialog opened mid-scene is on
+screen), then the clip is cropped to it and upscaled back to the scene size — so every
+scene keeps identical dimensions for crossfades. Use `scroll_into_view` first if the
+target is below the fold. Works in `before_after` capture halves too. Don't begin a
+real-app scene on the loading screen — `browser_capture` already auto-trims the boot/auth
+splash (`trim_start_ms` to override).
 
 **Runs standalone too:**
 ```bash
