@@ -54,11 +54,15 @@ python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyam
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
 export DEMO_CONFIG=config.json
+# The pipeline runs from .build; export the project root so plan-scenes can
+# resolve user-relative scene source clips (e.g. before_after footage/*.mp4)
+# against it — same as the backdrop handling above.
+export DEMO_ROOT="$ROOT"
 
 # Resolve the scene plan early (cheap) — drives both --plan and the arc-aware gate.
 python plan-scenes.py
