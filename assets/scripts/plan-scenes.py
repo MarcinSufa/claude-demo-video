@@ -104,6 +104,8 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                 # Trim the head of the clip (ms) — skip a slow app boot/auth splash.
                 # Unset → record-browser auto-trims to ~1s before the app was ready.
                 "trim_start_ms": sc.get("trim_start_ms"),
+                # Frame the change: crop+zoom the output to a selector / explicit rect.
+                "clip": sc.get("clip"),
             }
         elif t == "html_mockup":
             # Render a local HTML via the same browser engine, served by the http server
@@ -157,6 +159,7 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                         "warmup": should_warmup(h["url"], h.get("warmup")),
                         "auth": bool(h.get("auth", False)),
                         "trim_start_ms": h.get("trim_start_ms"),
+                        "clip": h.get("clip"),
                     }
                 else:
                     sys.exit(f"before_after '{role}' needs a path string, 'source', or 'url'")
