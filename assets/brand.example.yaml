@@ -154,6 +154,14 @@ scenes:
   #   - { type: browser_capture, url: "http://localhost:3000", actions: [{ scroll: 400 }] }
   #   - endcards            # → built-in + real UI, 3 scenes
   #
+  # sequence:               # → a BEFORE / AFTER task demo (the bug, then the fix)
+  #   - hero
+  #   - type: before_after
+  #     before: { source: "footage/before.mp4", label: "BEFORE — the bug" }
+  #     after:  { source: "footage/after.mp4",  label: "AFTER — the fix" }
+  #     layout: sequential      # or "side_by_side"; half_duration: 6 trims each half
+  #   - endcards
+  #
   # 2) arc preset — a named shortcut that expands to a sequence:
   arc: "memory-product-default"
   #    presets: "memory-product-default" (7), "short" (3: hero/graph/endcards),
@@ -165,10 +173,19 @@ scenes:
   # Only used when arc: "custom". Mix any of these scene types:
   #   browser_capture  — drive a REAL running app/site + record interactions
   #   screen_recording — import an existing .mp4 (Screen Studio / OBS)
+  #   before_after     — a labeled BEFORE/AFTER comparison of two clips (task demos)
   #   html_mockup      — render a local HTML file (like built-in graph/endcards)
   #   terminal         — built-in terminal scene (hero|input|amnesia|recall|agent:N)
   #   graph            — built-in knowledge-graph scene
   #   endcards         — built-in branded end cards
+  #
+  # before_after — show a task's BEFORE (the bug) next to its AFTER (the fix).
+  #   Each half is a clip path / { source } / or a browser_capture spec { url, actions, auth }.
+  #   - type: before_after
+  #     before: { source: "footage/before.mp4", label: "BEFORE — the bug" }   # red banner
+  #     after:  { url: "http://localhost:5001/...", actions: [...], auth: true, label: "AFTER" }  # green, recorded
+  #     layout: sequential   # before-then-after (default) | side_by_side
+  #     half_duration: 8     # optional: trim each half to N seconds
   custom_scenes:
     - type: browser_capture
       url: "http://localhost:3000/dashboard"   # real app, or https://yoursite.com

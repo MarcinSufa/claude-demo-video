@@ -69,6 +69,20 @@ while IFS=$'\t' read -r id type mp4 extra; do
       src=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin)['source'])")
       [ -f "$src" ] || { echo "  missing screen_recording source: $src"; exit 1; }
       echo "  using existing: $src" ;;
+    before_after)
+      # Record any capture halves (record-browser writes to each half's capture.output),
+      # then make-before-after.py labels + composes the two clips into one scene mp4.
+      echo "$extra" > ".scene-$id.json"
+      for role in before after; do
+        cap=$(python -c "import json;h=json.load(open('.scene-$id.json')).get('$role',{});print(json.dumps(h['capture']) if isinstance(h,dict) and 'capture' in h else '')")
+        if [ -n "$cap" ]; then
+          echo "  recording $role half..."
+          echo "$cap" > ".scene-$id-$role.json"
+          node record-browser.mjs ".scene-$id-$role.json"
+        fi
+      done
+      python make-before-after.py ".scene-$id.json" "$mp4"
+      rm -f ".scene-$id.json" ".scene-$id-before.json" ".scene-$id-after.json" ;;
     *)
       echo "  unknown scene type: $type"; exit 1 ;;
   esac

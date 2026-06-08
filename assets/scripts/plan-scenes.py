@@ -116,6 +116,39 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
             entry["mp4"] = f"{sid}_terminal.mp4"
         elif t in ("graph", "endcards", "multi_agent"):
             entry["mp4"] = f"videos/{t}.mp4"
+        elif t == "before_after":
+            # A labeled BEFORE/AFTER comparison scene. Each half is a path string,
+            # a {"source": mp4}, or a browser_capture spec {"url", "actions", ...}.
+            # build-scenes.sh records any capture halves, then make-before-after.py
+            # labels + composes them (sequential concat or side_by_side hstack).
+            entry["mp4"] = f"videos/{sid}.mp4"
+            entry["layout"] = sc.get("layout", "sequential")
+            if sc.get("half_duration") is not None:
+                entry["half_duration"] = float(sc["half_duration"])
+            for role, default_label in (("before", "BEFORE"), ("after", "AFTER")):
+                if role not in sc:
+                    sys.exit(f"before_after scene needs a '{role}' half")
+                h = sc[role]
+                if isinstance(h, str):
+                    h = {"source": h}
+                half = {"label": h.get("label", sc.get(f"{role}_label", default_label))}
+                if h.get("source"):
+                    half["source"] = h["source"]
+                elif h.get("url"):
+                    half["capture"] = {
+                        "url": h["url"], "output": f"videos/{sid}_{role}.mp4",
+                        "cursor": h.get("cursor", True),
+                        "settle_ms": h.get("settle_ms", 1200),
+                        "tail_ms": h.get("tail_ms", 1500),
+                        "viewport": h.get("viewport", {"width": 1920, "height": 1080}),
+                        "actions": h.get("actions", []),
+                        "warmup": should_warmup(h["url"], h.get("warmup")),
+                        "auth": bool(h.get("auth", False)),
+                        "trim_start_ms": h.get("trim_start_ms"),
+                    }
+                else:
+                    sys.exit(f"before_after '{role}' needs a path string, 'source', or 'url'")
+                entry[role] = half
         else:
             sys.exit(f"Unknown custom scene type: {t}")
         # P0-3: optional explicit duration — build-scenes.sh normalizes the clip to
