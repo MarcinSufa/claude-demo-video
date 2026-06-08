@@ -61,6 +61,18 @@ def dep_files_for(entry):
     if t == "html_mockup":
         src = entry.get("html_source")
         return [os.path.basename(src)] if src else []
+    if t == "before_after":
+        # Hash the content of each external source clip so replacing a
+        # footage/*.mp4 (same path, new content) busts the cache and recomposes.
+        # Capture halves contribute no dep file — their url/actions live in the
+        # entry JSON (already hashed), same as browser_capture.
+        deps = []
+        for role in ("before", "after"):
+            half = entry.get(role) or {}
+            src = half.get("source")
+            if src:
+                deps.append(src)
+        return deps
     return []
 
 

@@ -28,6 +28,18 @@ def should_warmup(url, explicit=None):
     return "localhost" in u or "127.0.0.1" in u
 
 
+def resolve_source(path):
+    """Resolve a user-supplied scene clip path so it's reachable from the .build
+    cwd the pipeline runs in. A relative path is taken relative to the project root
+    (DEMO_ROOT, set by build.sh) — the same base the user wrote it against and the
+    same base build.sh resolves the backdrop against. Absolute paths pass through.
+    When DEMO_ROOT is unset (standalone/tests) the path is returned unchanged."""
+    root = os.environ.get("DEMO_ROOT")
+    if root and not os.path.isabs(path):
+        return os.path.join(root, path).replace("\\", "/")
+    return path
+
+
 # Built-in scene names → how to build them. Use any subset, any order, via
 # scenes.sequence. This is what gives full control over scene COUNT.
 BUILTINS = {
@@ -133,7 +145,7 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                     h = {"source": h}
                 half = {"label": h.get("label", sc.get(f"{role}_label", default_label))}
                 if h.get("source"):
-                    half["source"] = h["source"]
+                    half["source"] = resolve_source(h["source"])
                 elif h.get("url"):
                     half["capture"] = {
                         "url": h["url"], "output": f"videos/{sid}_{role}.mp4",

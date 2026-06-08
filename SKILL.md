@@ -224,7 +224,9 @@ sequence:
 Each half is a **clip path / `{ source }`**, or a **`browser_capture` spec**
 (`{ url, actions, auth, ... }`) that the pipeline records for you — so you can
 point `before` at the deployed/no-fix URL and `after` at the fixed branch and let
-it capture both. How to produce the two clips for a *code* change:
+it capture both. A `source` path is taken **relative to your demo project
+directory** (where `brand.yaml` lives, e.g. `footage/before.mp4`), or absolute.
+How to produce the two clips for a *code* change:
 
 1. Record the **before** against the no-fix state (deployed URL, or the base
    branch's dev server), e.g. via a Playwright/e2e run with `video: 'on'`, or a

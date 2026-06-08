@@ -1,10 +1,12 @@
 """Tests for the before_after scene type: make-before-after.py's pure filter/
-label logic and plan-scenes.py's before_after resolution.
+label logic, plan-scenes.py's before_after resolution, and scene_cache's
+source-clip cache busting.
 
 Run: python -m unittest discover tests
 """
 import importlib.util
 import os
+import tempfile
 import unittest
 
 
@@ -18,6 +20,7 @@ def _load(name, filename):
 
 mba = _load("make_before_after", "make-before-after.py")
 plan = _load("plan_scenes", "plan-scenes.py")
+sc = _load("scene_cache", "scene_cache.py")
 
 
 class AsciiLabel(unittest.TestCase):
@@ -134,6 +137,111 @@ class PlanBeforeAfter(unittest.TestCase):
                     {"type": "html_mockup", "source": "t.html"},
                 ]
             )
+
+
+class CacheBusting(unittest.TestCase):
+    """before_after scenes are cached (not screen_recording), so the cache key
+    MUST depend on the source clips' content — otherwise replacing footage with
+    new content (same path) silently reuses the stale composite."""
+
+    def test_dep_files_lists_source_halves(self):
+        entry = {
+            "type": "before_after",
+            "before": {"source": "footage/b.mp4"},
+            "after": {"source": "footage/a.mp4"},
+        }
+        self.assertEqual(set(sc.dep_files_for(entry)), {"footage/b.mp4", "footage/a.mp4"})
+
+    def test_dep_files_skips_capture_halves(self):
+        # A capture half carries its url/actions in the entry JSON (already hashed),
+        # so it contributes no dep file — only the source half does.
+        entry = {
+            "type": "before_after",
+            "before": {"capture": {"url": "http://x", "output": "videos/c1_before.mp4"}},
+            "after": {"source": "a.mp4"},
+        }
+        self.assertEqual(sc.dep_files_for(entry), ["a.mp4"])
+
+    def test_source_content_busts_cache(self):
+        with tempfile.TemporaryDirectory() as d:
+            before = os.path.join(d, "before.mp4")
+            after = os.path.join(d, "after.mp4")
+            with open(after, "wb") as f:
+                f.write(b"AFTER")
+            entry = {
+                "type": "before_after",
+                "id": "c2",
+                "mp4": "videos/c2.mp4",
+                "before": {"source": before, "label": "B"},
+                "after": {"source": after, "label": "A"},
+            }
+            with open(before, "wb") as f:
+                f.write(b"original")
+            k1 = sc.cache_key(entry, sc.dep_files_for(entry))
+            with open(before, "wb") as f:
+                f.write(b"replaced-with-new-footage")
+            k2 = sc.cache_key(entry, sc.dep_files_for(entry))
+            self.assertNotEqual(k1, k2, "changing a source clip must bust the cache")
+
+    def test_same_content_keeps_cache_stable(self):
+        with tempfile.TemporaryDirectory() as d:
+            before = os.path.join(d, "before.mp4")
+            after = os.path.join(d, "after.mp4")
+            for p in (before, after):
+                with open(p, "wb") as f:
+                    f.write(b"clip-bytes")
+            entry = {
+                "type": "before_after",
+                "id": "c2",
+                "mp4": "videos/c2.mp4",
+                "before": {"source": before},
+                "after": {"source": after},
+            }
+            k1 = sc.cache_key(entry, sc.dep_files_for(entry))
+            k2 = sc.cache_key(entry, sc.dep_files_for(entry))
+            self.assertEqual(k1, k2, "unchanged sources must reuse the cache")
+
+
+class SourceResolution(unittest.TestCase):
+    """The pipeline runs from .build, so a user-relative source clip must be
+    resolved against the project root (DEMO_ROOT) to be reachable — otherwise the
+    build can't find it AND scene_cache hashes 'MISSING' instead of the content."""
+
+    def setUp(self):
+        self._saved = os.environ.get("DEMO_ROOT")
+
+    def tearDown(self):
+        if self._saved is None:
+            os.environ.pop("DEMO_ROOT", None)
+        else:
+            os.environ["DEMO_ROOT"] = self._saved
+
+    def test_relative_resolved_against_demo_root(self):
+        root = os.path.abspath("proj")
+        os.environ["DEMO_ROOT"] = root
+        expected = os.path.join(root, "footage/b.mp4").replace("\\", "/")
+        self.assertEqual(plan.resolve_source("footage/b.mp4"), expected)
+
+    def test_absolute_passes_through(self):
+        os.environ["DEMO_ROOT"] = os.path.abspath("proj")
+        abs_clip = os.path.abspath("footage/a.mp4")
+        self.assertEqual(plan.resolve_source(abs_clip), abs_clip)
+
+    def test_unchanged_when_no_demo_root(self):
+        os.environ.pop("DEMO_ROOT", None)
+        self.assertEqual(plan.resolve_source("footage/b.mp4"), "footage/b.mp4")
+
+    def test_before_after_sources_resolved_in_plan(self):
+        root = os.path.abspath("proj")
+        os.environ["DEMO_ROOT"] = root
+        ba = plan.resolve_sequence(
+            [
+                {"type": "before_after", "before": "footage/b.mp4", "after": {"source": "footage/a.mp4"}},
+                {"type": "html_mockup", "source": "t.html"},
+            ]
+        )[0]
+        self.assertEqual(ba["before"]["source"], os.path.join(root, "footage/b.mp4").replace("\\", "/"))
+        self.assertEqual(ba["after"]["source"], os.path.join(root, "footage/a.mp4").replace("\\", "/"))
 
 
 if __name__ == "__main__":

@@ -59,6 +59,10 @@ mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
 export DEMO_CONFIG=config.json
+# The pipeline runs from .build; export the project root so plan-scenes can
+# resolve user-relative scene source clips (e.g. before_after footage/*.mp4)
+# against it — same as the backdrop handling above.
+export DEMO_ROOT="$ROOT"
 
 # Resolve the scene plan early (cheap) — drives both --plan and the arc-aware gate.
 python plan-scenes.py
