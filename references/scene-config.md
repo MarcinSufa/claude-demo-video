@@ -64,13 +64,36 @@ smooth fake cursor, trims the pre-paint frame. This is how you demo **actual UI*
   actions:
     - { wait: 1.0 }                                          # pause N seconds
     - { hover: ".sidebar .new-vault" }                       # glide + hover selector
-    - { click: "button.new-vault" }                          # glide + click
+    - { click: "button.new-vault", glow: true }             # glide + click (glow: pulse it)
     - { fill: { selector: "input[name=title]", text: "..." }}# fill an input
     - { type: "typed character by character" }               # type into focused el
     - { press: "Enter" }                                     # keyboard key
     - { scroll: 400 }                                        # wheel down (negative = up)
     - { scroll_into_view: ".load-row" }                      # bring an off-screen el into view
+    - { highlight: ".total-row" }                            # pulse an element (no click)
+    - { waitToast: "Error" }                                 # wait until a toast/alert shows
+    - { wait: 1.5, speed: 4 }                                # speed: ramp this span (hide loading)
 ```
+
+**Focus & pacing (per-action `speed` / `zoom`).** Any action takes an optional
+`speed` (playback rate for its span — `speed: 4` over a `wait` makes a slow load
+read as a blink) and `zoom` (a Ken Burns push onto the region that changed). These
+are written to a `<clip>.events.json` sidecar and applied by `cut-clip.py` after
+capture — a no-op when unused, so existing scenes are unaffected.
+
+```yaml
+actions:
+  - { click: "button.save", glow: true }
+  - { wait: 2.0, speed: 5 }                                  # the save spinner flies by
+  - { waitToast: "Saved", zoom: { fx: 0.85, fy: 0.12, z: 1.3 } }  # zoom the toast corner
+```
+
+`zoom` focal points are normalized: `fx`/`fy` are 0–1 (0,0 = top-left), `z` > 1 is
+the zoom factor. `speed`/`zoom` are **time-windowed** (they affect only that
+action's span); `clip` (below) is a **static** crop applied to the whole scene. Use
+`zoom` to push in on a toast then pull back; use `clip` to frame one dialog for the
+entire scene. `waitToast` matches any `[class*=toast]` / `[role=alert]` node, so an
+error/success notification is guaranteed on screen rather than scrolling past.
 
 **`clip` — frame the change, not the whole page.** When a demo is about one
 control/dialog/row, record the full page but crop+zoom the output to that element so

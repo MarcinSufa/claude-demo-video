@@ -236,6 +236,16 @@ How to produce the two clips for a *code* change:
 3. Drive the *same* interaction in both so the comparison is honest; trim with
    `half_duration` and label each side.
 
+**Focus the capture on what changed.** A `before_after` capture half is a
+`browser_capture` spec, so its `actions` take focus controls: `glow`/`highlight`
+to pulse the touched element, `waitToast` to guarantee an error/success
+notification is on screen, and per-action `speed` (ramp out a slow load) + `zoom`
+(Ken Burns onto the toast/field). Off-screen targets are auto-scrolled into view
+before interaction. So a bug→fix demo reads clearly — the viewer sees the toast in
+BEFORE and its absence in AFTER, full-frame, without watching spinners. See
+`references/scene-config.md` → *Focus & pacing*. (`clip` frames one region for the
+whole half; `speed`/`zoom` are time-windowed and composable with it.)
+
 Banner labels render through ffmpeg `drawtext`, which is not reliably UTF-8 on
 Windows — labels are auto-sanitized to ASCII (an em-dash becomes `-`), so keep
 them short and plain.
