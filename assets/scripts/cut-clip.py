@@ -20,9 +20,40 @@ The timeline + filter graph are built by the pure `build_timeline()` /
 """
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
+
+
+def _num(v, default=None):
+    """Parse v as a finite float; return default for None/non-numeric/NaN/inf."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return default
+    return f if math.isfinite(f) else default
+
+
+def _sane_speed(speed):
+    """Clamp a (user-authored) playback speed to a positive finite float; default 1.0."""
+    f = _num(speed, 1.0)
+    return f if f > 0 else 1.0
+
+
+def _sane_zoom(zoom):
+    """Validate a user-authored zoom → {z, fx, fy} (z>1, fx/fy clamped to 0..1), else None.
+
+    Drops anything that isn't a dict carrying a finite z>1 (z<=1 is a full-frame no-op),
+    so a malformed/edge zoom object is ignored rather than aborting the build."""
+    if not isinstance(zoom, dict):
+        return None
+    z = _num(zoom.get("z"))
+    if z is None or z <= 1:
+        return None
+    fx = min(max(_num(zoom.get("fx"), 0.5), 0.0), 1.0)
+    fy = min(max(_num(zoom.get("fy"), 0.5), 0.0), 1.0)
+    return {"z": z, "fx": fx, "fy": fy}
 
 
 def build_timeline(events, duration):
@@ -34,7 +65,7 @@ def build_timeline(events, duration):
     cursor = 0.0
     ordered = sorted(
         ({"start": max(0.0, float(e["start"])), "end": min(float(duration), float(e["end"])),
-          "speed": float(e.get("speed") or 1) or 1, "zoom": e.get("zoom")}
+          "speed": _sane_speed(e.get("speed")), "zoom": e.get("zoom")}
          for e in events),
         key=lambda e: e["start"],
     )
@@ -55,22 +86,29 @@ def build_timeline(events, duration):
 
 
 def zoom_chain(w, h, z, fx, fy):
-    """crop to a 1/z window centered on the normalized focal point, then scale back."""
-    cw, ch = w / z, h / z
-    x = min(max(fx * w - cw / 2, 0), w - cw)
-    y = min(max(fy * h - ch / 2, 0), h - ch)
-    cw, ch = int(cw // 2 * 2), int(ch // 2 * 2)
-    return f"crop={cw}:{ch}:{int(x)}:{int(y)},scale={w}:{h}"
+    """crop to a 1/z window centered on the normalized focal point, then scale back.
+
+    Clamps the window to an even-pixel rect that always fits inside the frame, so
+    edge inputs (tiny/huge z, focal point in a corner) still yield a valid filter."""
+    if not z > 0:                       # 0 / negative / NaN → no magnification
+        z = 1.0
+    cw = min(w, max(2, int((w / z) // 2 * 2)))
+    ch = min(h, max(2, int((h / z) // 2 * 2)))
+    x = int(min(max(fx * w - cw / 2, 0), w - cw))
+    y = int(min(max(fy * h - ch / 2, 0), h - ch))
+    return f"crop={cw}:{ch}:{x}:{y},scale={w}:{h}"
 
 
 def build_filter(segments, w, h, fps=30):
     """Return (filter_complex, out_label) for the segment list. Pure."""
     parts, labels = [], []
     for i, (start, end, speed, zoom) in enumerate(segments):
+        speed = _sane_speed(speed)
+        zoom = _sane_zoom(zoom)
         chain = [f"trim={start:.3f}:{end:.3f}"]
         chain.append("setpts=(PTS-STARTPTS)" if speed == 1 else f"setpts=(PTS-STARTPTS)/{speed}")
         if zoom:
-            chain.append(zoom_chain(w, h, float(zoom["z"]), float(zoom["fx"]), float(zoom["fy"])))
+            chain.append(zoom_chain(w, h, zoom["z"], zoom["fx"], zoom["fy"]))
         chain += [f"fps={fps}", "setsar=1"]
         parts.append(f"[0:v]{','.join(chain)}[v{i}]")
         labels.append(f"[v{i}]")
@@ -79,8 +117,8 @@ def build_filter(segments, w, h, fps=30):
 
 
 def has_work(events):
-    """True when any event asks for a non-1 speed or a zoom (else cut is a no-op)."""
-    return any((float(e.get("speed") or 1) != 1) or e.get("zoom") for e in events)
+    """True when any event asks for a non-1 speed or a usable zoom (else cut is a no-op)."""
+    return any(_sane_speed(e.get("speed")) != 1 or _sane_zoom(e.get("zoom")) for e in events)
 
 
 def _probe_duration(path):
@@ -103,7 +141,8 @@ def main():
     if not os.path.exists(events_path):
         return  # nothing to do — clip stays as recorded
 
-    meta = json.load(open(events_path, encoding="utf-8"))
+    with open(events_path, encoding="utf-8") as f:
+        meta = json.load(f)
     events = meta.get("events", [])
     if not has_work(events):
         return  # no speed/zoom requested — leave the clip untouched

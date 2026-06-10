@@ -32,6 +32,16 @@ class HasWork(unittest.TestCase):
     def test_empty_is_noop(self):
         self.assertFalse(cc.has_work([]))
 
+    def test_malformed_zoom_is_noop(self):
+        # a zoom that isn't a usable dict (missing z, or not a dict) is no work
+        self.assertFalse(cc.has_work([{"start": 0, "end": 1, "speed": 1, "zoom": {"fx": 0.5}}]))
+        self.assertFalse(cc.has_work([{"start": 0, "end": 1, "speed": 1, "zoom": "corner"}]))
+
+    def test_bad_speed_is_noop(self):
+        # non-positive / non-numeric speed is sanitized to 1x → no work
+        self.assertFalse(cc.has_work([{"start": 0, "end": 1, "speed": 0, "zoom": None}]))
+        self.assertFalse(cc.has_work([{"start": 0, "end": 1, "speed": "fast", "zoom": None}]))
+
 
 class BuildTimeline(unittest.TestCase):
     def test_fills_gap_before_and_after(self):
@@ -89,6 +99,18 @@ class BuildFilter(unittest.TestCase):
         self.assertIn("crop=", fc)
         self.assertIn("scale=1920:1080", fc)
 
+    def test_malformed_zoom_is_ignored(self):
+        # zoom dict missing z (or not a dict) must not crash or emit a crop filter
+        for bad in ({"fx": 0.5, "fy": 0.5}, {"z": float("nan"), "fx": 0.5, "fy": 0.5}, "corner", 7):
+            fc, _ = cc.build_filter([(0.0, 2.0, 1.0, bad)], 1920, 1080)
+            self.assertNotIn("crop=", fc)
+
+    def test_bad_speed_falls_back_to_passthrough(self):
+        # non-positive / NaN / inf speed must not emit a divide (invalid setpts)
+        for bad in (0, -3, float("nan"), float("inf")):
+            fc, _ = cc.build_filter([(0.0, 2.0, bad, None)], 1920, 1080)
+            self.assertNotIn("STARTPTS)/", fc)
+
 
 class ZoomChain(unittest.TestCase):
     def test_centered_full_zoom_window(self):
@@ -100,6 +122,17 @@ class ZoomChain(unittest.TestCase):
         # focal at the far corner must not produce a negative / overflowing crop origin
         chain = cc.zoom_chain(1920, 1080, 2.0, 1.0, 1.0)
         self.assertEqual(chain, "crop=960:540:960:540,scale=1920:1080")
+
+    def test_zoom_le_1_is_full_frame(self):
+        # z<=1 must clamp the window to the full frame (never a window larger than it)
+        self.assertEqual(cc.zoom_chain(1920, 1080, 0.5, 0.5, 0.5),
+                         "crop=1920:1080:0:0,scale=1920:1080")
+
+    def test_huge_zoom_keeps_a_valid_window(self):
+        # an extreme z must floor the window at 2px (even), origin inside the frame
+        chain = cc.zoom_chain(1920, 1080, 99999.0, 0.5, 0.5)
+        self.assertTrue(chain.startswith("crop=2:2:"))
+        self.assertIn(",scale=1920:1080", chain)
 
 
 if __name__ == "__main__":
