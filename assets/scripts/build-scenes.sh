@@ -60,11 +60,13 @@ while IFS=$'\t' read -r id type mp4 extra; do
         -c:v libx264 -crf 20 -pix_fmt yuv420p "$mp4" ;;
     browser_capture)
       echo "$extra" | python -c "import json,sys;json.dump(json.load(sys.stdin)['scene_spec'],open('.scene-$id.json','w'))"
-      node record-browser.mjs ".scene-$id.json" ;;
+      node record-browser.mjs ".scene-$id.json"
+      python cut-clip.py "$mp4" ;;        # focus: speed-ramp + zoom (no-op if unused)
     html_mockup)
       # html_source already rendered into .build by apply-brand OR copied by build.sh
       echo "$extra" | python -c "import json,sys;json.dump(json.load(sys.stdin)['scene_spec'],open('.scene-$id.json','w'))"
-      node record-browser.mjs ".scene-$id.json" ;;
+      node record-browser.mjs ".scene-$id.json"
+      python cut-clip.py "$mp4" ;;
     screen_recording)
       src=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin)['source'])")
       [ -f "$src" ] || { echo "  missing screen_recording source: $src"; exit 1; }
@@ -79,6 +81,9 @@ while IFS=$'\t' read -r id type mp4 extra; do
           echo "  recording $role half..."
           echo "$cap" > ".scene-$id-$role.json"
           node record-browser.mjs ".scene-$id-$role.json"
+          # focus the half before it is labeled + composed (no-op without speed/zoom)
+          half_mp4=$(python -c "import json;print(json.load(open('.scene-$id-$role.json'))['output'])")
+          python cut-clip.py "$half_mp4"
         fi
       done
       python make-before-after.py ".scene-$id.json" "$mp4"
