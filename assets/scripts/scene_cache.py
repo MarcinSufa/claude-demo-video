@@ -17,11 +17,13 @@ import os
 import sys
 
 # Bump to invalidate ALL caches when a recorder/normalizer change makes old clips wrong.
-VERSION = "1"
+VERSION = "2"
 
 
 def cache_key(entry, dep_files=()):
-    """Deterministic sha256 over the plan entry + dependent file contents + VERSION."""
+    """Deterministic sha256 over the plan entry + dependent file contents + VERSION.
+    mascot_plan is excluded: mascot changes re-OVERLAY (overlay_key), never re-record."""
+    entry = {k: v for k, v in entry.items() if k != "mascot_plan"}
     h = hashlib.sha256()
     h.update(("scene-cache-v" + VERSION).encode())
     h.update(json.dumps(entry, sort_keys=True).encode())
@@ -43,6 +45,21 @@ def is_fresh(mp4_path, sha_path, key):
         return False
     with open(sha_path, encoding="utf-8") as f:
         return f.read().strip() == key
+
+
+def overlay_key(capture_path, mascot_json_path, timeline):
+    """Cache key for the overlay layer: pristine capture content + mascot data +
+    resolved timeline. Any of the three changing re-composites; none re-records."""
+    h = hashlib.sha256()
+    h.update(("overlay-cache-v" + VERSION).encode())
+    for p in (capture_path, mascot_json_path):
+        try:
+            with open(p, "rb") as f:
+                h.update(f.read())
+        except FileNotFoundError:
+            h.update(b"\x00MISSING:" + os.path.basename(p).encode())
+    h.update(json.dumps(timeline, sort_keys=True).encode())
+    return h.hexdigest()
 
 
 def dep_files_for(entry):
@@ -85,6 +102,21 @@ def _find_entry(plan_path, sid):
 
 
 def main(argv):
+    if len(argv) >= 2 and argv[1] in ("overlay-check", "overlay-save"):
+        if len(argv) != 6:
+            sys.exit("usage: python scene_cache.py overlay-check|overlay-save "
+                     "<clip> <capture> <mascot.json> <timeline.json>")
+        clip, capture, mascot, tl_path = argv[2:6]
+        with open(tl_path, encoding="utf-8") as f:
+            timeline = json.load(f)
+        key = overlay_key(capture, mascot, timeline)
+        sha = clip + ".overlay.sha"
+        if argv[1] == "overlay-check":
+            return 0 if is_fresh(clip, sha, key) else 1
+        with open(sha, "w", encoding="utf-8", newline="\n") as f:
+            f.write(key + "\n")
+        return 0
+
     if len(argv) != 4 or argv[1] not in ("check", "save"):
         sys.exit("usage: python scene_cache.py check|save <scene-plan.json> <id>")
     cmd, plan_path, sid = argv[1], argv[2], argv[3]

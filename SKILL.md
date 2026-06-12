@@ -49,6 +49,7 @@ Inside Claude Code, the skill orchestrates these by reading config and invoking 
 
 ```
 apply-brand.py    → compile brand.yaml → .build/ (rendered templates + config.json)
+render-mascot.py  → mascot sprite frames (if mascot: configured) — overlaid inside build-scenes.sh per row/step
 make-vo.py        → Edge TTS streams vo.mp3 + vo-words.json (word-level timing)
 make-captions.py  → captions.ass (karaoke) + captions.srt
 make-music.sh     → procedural ambient pad music.mp3 (or mode: file / none)
@@ -148,12 +149,14 @@ When invoked, follow this sequence:
 2. **For `init`**:
    - `mkdir <project>/demo-video/`
    - Copy `assets/scripts/*` and `assets/templates/*` to that folder
+   - Copy `assets/mascots/` → `<project>/demo-video/mascots/` (the roster JSON files — needed so the build can find roster characters at `demo-video/mascots/$CHAR.json` when running from a scaffolded project)
    - Copy `assets/brand.example.yaml` → `brand.yaml`
    - Copy `assets/package.example.json` → `package.json` (so `pnpm install` lands
      Playwright in *this* folder, not a parent — without a local manifest pnpm walks
      up and installs into the wrong `node_modules`). Optionally set `name` to `<project>-demo-video`.
    - Copy `assets/mockup.example.html` → `mockups/example.html` (starter for `html_mockup`
      scenes — demo unbuilt features without touching the real codebase)
+   - If the user wants the mascot: read the logo/brand colors, pick the best-fit roster character, call `mascot_brand.remap_palette` with brand colors, optionally edit accessory cells in the grid, write `mascot.json` next to `brand.yaml`.
    - Run a quick interactive interview (3-5 questions): product name, URL, voice gender/tone, what each scene should show
    - Fill in `brand.yaml` based on answers
    - Print: "Run `pnpm install && pnpm exec playwright install chromium`, edit `brand.yaml`, then `/demo-video plan` and `/demo-video build`."
@@ -280,6 +283,9 @@ These were discovered the hard way building the reference implementation. The bu
 ```
 demo-video/
 ├── brand.yaml                  ← user edits this
+├── mascot.json                 ← optional: custom mascot (or copied from mascots/ by build.sh)
+├── mascots/                    ← roster characters copied from assets/mascots/ at init
+│   └── octopus.json            ← built-in octopus character
 ├── scripts/                    ← copied from skill
 │   ├── apply-brand.py          ← compiles brand.yaml → .build/
 │   ├── make-vo.py
@@ -297,6 +303,11 @@ demo-video/
 │   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes
 │   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker gate
 │   ├── autofit.py              ← P0-1 opt-in: fit speedup to voiceover length
+│   ├── mascot_data.py          ← parse mascot.json sprite grid
+│   ├── render-mascot.py        → render mascot sprite frames from mascot.json
+│   ├── resolve-mascot-timeline.py ← map scene timeline to mascot emotion segments
+│   ├── overlay-mascot.py       ← composite mascot frames onto scene video
+│   ├── mascot_brand.py         ← remap mascot palette to brand colors
 │   ├── make-auth.mjs           ← P2-1 log in once → auth.json (storageState)
 │   ├── record-frame.mjs
 │   ├── record-endcards.mjs
@@ -322,6 +333,65 @@ After `build` completes, the user has:
 - `videos/final-with-captions.mp4` — same but full-screen (no terminal frame)
 - `captions.srt` — upload to YouTube for accessibility / SEO
 - `vo.mp3` — standalone voice track if they want to re-edit in another tool
+
+## Mascot
+
+An animated mascot character can be overlaid on any scene. Configure globally in `brand.yaml`:
+
+```yaml
+mascot:
+  character: octopus      # roster character (or ship your own mascot.json next to brand.yaml)
+  enabled: true
+  position: bottom-right  # bottom-left | top-right | top-left
+  scale: 1.0
+```
+
+The mascot's emotion is inferred from the scene type by default (e.g. `type` for terminal, `idle` for browser captures). Override per scene using the dict form in `scenes.sequence`:
+
+```yaml
+scenes:
+  sequence:
+    - hero
+    - type: before_after
+      before: { source: footage/before.mp4 }
+      after:  { source: footage/after.mp4 }
+      mascot: { before: panic, after: celebrate }   # emotion per half
+    - type: browser_capture
+      url: http://localhost:3000
+      mascot: { emotion: celebrate }                # single emotion override
+    - type: terminal
+      scene: recall
+      mascot: { enabled: false }                    # suppress for this scene
+    - endcards
+```
+
+**Built-in string scene names** (e.g. `"hero"`, `"graph"`) do not support per-scene `mascot:` overrides — use the dict form `{ type: ..., mascot: {...} }` for that. The global `mascot:` block in `brand.yaml` still applies to all scenes.
+
+**Keyframe choreography.** Within a single scene you can time-stamp emotions and positions using `keyframes`. Each keyframe has an `at` (seconds from scene start), an `emotion`, and an optional `position`. Keyframes replace event-based resolution for that scene; the mascot holds the default emotion/position before the first keyframe if its `at` > 0.
+
+```yaml
+- type: html_mockup
+  source: mockups/board.html
+  duration: 15
+  mascot:
+    keyframes:
+      - { at: 0,  emotion: idle }
+      - { at: 4,  emotion: type }
+      - { at: 9,  emotion: point, position: bottom-left }
+      - { at: 13, emotion: celebrate }
+```
+
+**Walk between positions.** When consecutive keyframes (or segments) have different `position` values, the pipeline automatically inserts a 0.8 s `walk` move-segment at the start of the later segment. The mascot slides from the old anchor to the new one using a lerped ffmpeg expression — no manual walk step required.
+
+**Motion modifiers.** Two emotions add physical motion on top of position:
+- `celebrate` — bounces the mascot vertically (`18 * abs(sin((t-AT)*4))` px) while playing the celebrate animation frames.
+- `panic` — shakes the mascot horizontally (`4 * sin((t-AT)*18)` px) while playing the panic animation frames.
+
+**Roster.** Built-in characters: `octopus`, `tessel`, `kangaroo`. Specify one with `mascot.character` in `brand.yaml`. You can also ship a custom `mascot.json` next to `brand.yaml` (any character name).
+
+**Never blocks the build.** If `render-mascot.py` fails (missing font, bad JSON), the pipeline warns and continues mascot-less — the video still renders.
+
+**Two-layer cache.** Mascot frames are cached separately from scene recordings. Changing `mascot:` config (emotion, position, scale, keyframes) re-overlays without re-recording, so iteration is fast.
 
 ## See also
 

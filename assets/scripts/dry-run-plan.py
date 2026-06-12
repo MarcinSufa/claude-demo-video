@@ -17,6 +17,19 @@ CONFIG = os.environ.get("DEMO_CONFIG", "config.json")
 PLAN = os.environ.get("DEMO_PLAN", "scene-plan.json")
 
 
+def mascot_note_for(entry):
+    """Return a short mascot annotation string for a plan entry, or ''."""
+    m = entry.get("mascot_plan", {})
+    if not m.get("enabled"):
+        return ""
+    char = m.get("character", "octopus")
+    kf = m.get("keyframes")
+    if kf:
+        return f"  mascot: {char} ({len(kf)} keyframes)"
+    emo = m.get("emotion") or f"{m.get('before')}->{m.get('after')}"
+    return f"  mascot: {char} ({emo})"
+
+
 def main():
     if not os.path.exists(CONFIG):
         sys.exit(f"dry-run: missing {CONFIG} -- run apply-brand.py first")
@@ -50,7 +63,7 @@ def main():
             raws.append(float(dur))
             raw_s = f"{float(dur):>7.2f}s"
             fin_s = f"{float(dur)/speedup:>7.2f}s"
-        print(f"  {name:<22} {s['type']:<16} {raw_s:>9} {fin_s:>9}")
+        print(f"  {name:<22} {s['type']:<16} {raw_s:>9} {fin_s:>9}{mascot_note_for(s)}")
 
     print(f"\n  Voiceover estimate (no TTS): ~{vo_est:.1f}s")
 

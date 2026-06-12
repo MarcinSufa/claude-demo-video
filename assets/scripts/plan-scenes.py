@@ -40,6 +40,73 @@ def resolve_source(path):
     return path
 
 
+# Default whole-scene emotion per scene type (stage-1; exact timing is resolved
+# at build time by resolve-mascot-timeline.py against the real clip).
+MASCOT_TYPE_DEFAULTS = {
+    "terminal": "type",
+    "multi_agent": "type",
+    "graph": "idle",
+    "browser_capture": "idle",
+    "html_mockup": "idle",
+    "screen_recording": "idle",
+}
+
+
+def _validated_keyframes(keyframes, entry):
+    """Validate a scene's mascot keyframes list (stage-1; Phase 4).
+    Each item: `at` number >= 0 (required), `emotion` string (required),
+    `position` optional string. Exits with scene context on bad input."""
+    ctx = entry.get("id") or entry.get("type", "scene")
+    if not isinstance(keyframes, list):
+        sys.exit(f"scene '{ctx}': mascot.keyframes must be a list")
+    for i, kf in enumerate(keyframes):
+        where = f"scene '{ctx}': mascot.keyframes[{i}]"
+        if not isinstance(kf, dict):
+            sys.exit(f"{where} must be a dict with at/emotion")
+        at = kf.get("at")
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or at < 0:
+            sys.exit(f"{where}: 'at' must be a number >= 0")
+        if not isinstance(kf.get("emotion"), str):
+            sys.exit(f"{where}: 'emotion' must be a string")
+        pos = kf.get("position")
+        if pos is not None and not isinstance(pos, str):
+            sys.exit(f"{where}: 'position' must be a string when present")
+    return keyframes
+
+
+def mascot_stub(mascot_cfg, entry, scene_override):
+    """Stage-1 mascot resolution: defaults + overrides, no timing.
+    mascot_cfg is config.json's `mascot` block; scene_override is the scene's
+    `mascot:` dict (or None). Returns the mascot_plan stub for this entry."""
+    ov = scene_override or {}
+    enabled = bool(mascot_cfg.get("enabled", bool(mascot_cfg)))
+    if entry.get("type") == "endcards" and "enabled" not in ov:
+        enabled = False  # off by default on endcards (spec)
+    if "enabled" in ov:
+        enabled = bool(ov["enabled"])
+    stub = {
+        "enabled": enabled,
+        "character": mascot_cfg.get("character", "octopus"),
+        "position": ov.get("position", mascot_cfg.get("position", "bottom-right")),
+        "scale": mascot_cfg.get("scale", 1.0),
+    }
+    if not enabled:
+        return stub
+    t = entry.get("type")
+    if t == "before_after" and entry.get("layout", "sequential") == "sequential":
+        stub["before"] = ov.get("before", "panic")
+        stub["after"] = ov.get("after", "celebrate")
+    elif t == "before_after":  # side_by_side: one emotion, no half split (spec)
+        stub["emotion"] = ov.get("emotion", "point")
+    else:
+        stub["emotion"] = ov.get("emotion", MASCOT_TYPE_DEFAULTS.get(t, "idle"))
+    # Keyframes coexist with the default emotion (used before the first
+    # keyframe when its `at` > 0); stage-2 turns them into segments.
+    if ov.get("keyframes"):
+        stub["keyframes"] = _validated_keyframes(ov["keyframes"], entry)
+    return stub
+
+
 # Built-in scene names → how to build them. Use any subset, any order, via
 # scenes.sequence. This is what gives full control over scene COUNT.
 BUILTINS = {
@@ -63,7 +130,11 @@ ARCS = {
 
 def resolve_sequence(seq, ctx=None):
     """Resolve an ordered list of (built-in name | custom scene dict) into plan entries.
-    This is the single mechanism for ANY scene count + order."""
+    This is the single mechanism for ANY scene count + order.
+
+    Note: built-in string scene names (e.g. "hero", "graph") don't support per-scene
+    ``mascot:`` overrides — use the dict form ``{"type": ..., "mascot": {...}}`` for that.
+    The global ``mascot:`` block in brand.yaml still applies to all scenes."""
     ctx = ctx or {}
     plan = []
     for i, item in enumerate(seq):
@@ -123,8 +194,8 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
             }
             entry["html_source"] = src
         elif t == "screen_recording":
-            entry["source"] = sc["source"]  # existing mp4, no build needed
-            entry["mp4"] = sc["source"]
+            entry["source"] = resolve_source(sc["source"])  # existing mp4, no build needed
+            entry["mp4"] = entry["source"]
         elif t == "terminal":
             entry["scene"] = sc.get("scene", "hero")
             entry["mp4"] = f"{sid}_terminal.mp4"
@@ -171,8 +242,18 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
         # Not applied to screen_recording (would mutate the user's source file).
         if sc.get("duration") is not None and t != "screen_recording":
             entry["duration"] = float(sc["duration"])
+        if sc.get("mascot") is not None:
+            entry["_mascot_override"] = sc["mascot"]
         plan.append(entry)
     return plan
+
+
+def retarget_screen_recording(entry):
+    """screen_recording: never let the pipeline write onto the user's source
+    footage. When the mascot will overlay this scene, retarget the entry's
+    mp4 to a build-local copy (build-scenes.sh makes the copy)."""
+    if entry.get("type") == "screen_recording" and entry["mascot_plan"].get("enabled"):
+        entry["mp4"] = f"videos/{entry['id']}_screen.mp4"
 
 
 def main():
@@ -208,6 +289,12 @@ def main():
 
     if len(plan) < 2:
         sys.exit(f"Need >=2 scenes for crossfades, got {len(plan)}")
+
+    mascot_cfg = cfg.get("mascot", {})
+    for entry in plan:
+        ov = entry.pop("_mascot_override", None)
+        entry["mascot_plan"] = mascot_stub(mascot_cfg, entry, ov)
+        retarget_screen_recording(entry)
 
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump({"arc": label, "scenes": plan}, f, indent=2)

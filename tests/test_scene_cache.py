@@ -68,5 +68,51 @@ class IsFresh(unittest.TestCase):
             self.assertFalse(scene_cache.is_fresh(mp4, sha, "fresh"))
 
 
+class TestMascotCacheLayers(unittest.TestCase):
+    def test_capture_key_ignores_mascot_plan(self):
+        entry = {"id": "s1", "type": "terminal", "mp4": "a.mp4", "tape": None}
+        with_mascot = dict(entry, mascot_plan={"enabled": True, "emotion": "type"})
+        self.assertEqual(scene_cache.cache_key(entry), scene_cache.cache_key(with_mascot))
+
+    def test_capture_key_still_sensitive_to_entry(self):
+        a = {"id": "s1", "type": "terminal", "mp4": "a.mp4"}
+        b = {"id": "s1", "type": "terminal", "mp4": "b.mp4"}
+        self.assertNotEqual(scene_cache.cache_key(a), scene_cache.cache_key(b))
+
+    def test_overlay_key_changes_with_timeline(self):
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "c.mp4")
+            mascot = os.path.join(d, "m.json")
+            with open(clip, "wb") as f:
+                f.write(b"fakevideo")
+            with open(mascot, "w") as f:
+                f.write('{"name":"octopus"}')
+            t1 = {"stub": {"enabled": True}, "duration": 5.0,
+                  "timeline": [{"at": 0, "until": 5, "emotion": "idle"}]}
+            t2 = {"stub": {"enabled": True}, "duration": 5.0,
+                  "timeline": [{"at": 0, "until": 5, "emotion": "panic"}]}
+            k1 = scene_cache.overlay_key(clip, mascot, t1)
+            k2 = scene_cache.overlay_key(clip, mascot, t2)
+            self.assertNotEqual(k1, k2)
+
+    def test_overlay_key_changes_with_clip_content(self):
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "c.mp4")
+            mascot = os.path.join(d, "m.json")
+            with open(mascot, "w") as f:
+                f.write("{}")
+            t = {"stub": {"enabled": True}, "duration": 5.0,
+                 "timeline": [{"at": 0, "until": 5, "emotion": "idle"}]}
+            with open(clip, "wb") as f:
+                f.write(b"v1")
+            k1 = scene_cache.overlay_key(clip, mascot, t)
+            with open(clip, "wb") as f:
+                f.write(b"v2")
+            self.assertNotEqual(k1, scene_cache.overlay_key(clip, mascot, t))
+
+    def test_version_bumped(self):
+        self.assertEqual(scene_cache.VERSION, "2")
+
+
 if __name__ == "__main__":
     unittest.main()
