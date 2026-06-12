@@ -62,6 +62,24 @@ class TestValidate(unittest.TestCase):
         with self.assertRaisesRegex(MascotError, "body"):
             validate_mascot(bad)
 
+    def test_nonpositive_cell_px_rejected(self):
+        bad = json.loads(json.dumps(MINIMAL))
+        bad["cell_px"] = 0
+        with self.assertRaisesRegex(MascotError, "cell_px"):
+            validate_mascot(bad)
+
+    def test_non_integer_fps_rejected(self):
+        bad = json.loads(json.dumps(MINIMAL))
+        bad["fps"] = "fast"
+        with self.assertRaisesRegex(MascotError, "fps"):
+            validate_mascot(bad)
+
+    def test_bad_scale_rejected(self):
+        bad = json.loads(json.dumps(MINIMAL))
+        bad["scale"] = -1
+        with self.assertRaisesRegex(MascotError, "scale"):
+            validate_mascot(bad)
+
 
 class TestLoad(unittest.TestCase):
     def test_load_roundtrip(self):

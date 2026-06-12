@@ -7,7 +7,6 @@ This module is the single format authority; render-mascot.py and the brand
 remap helper both consume it.
 """
 import json
-import os
 import re
 
 REQUIRED_ANIMATIONS = (
@@ -21,20 +20,28 @@ class MascotError(Exception):
 
 
 def load_mascot(path):
-    if not os.path.exists(path):
-        raise MascotError(f"mascot file not found: {path}")
-    with open(path, encoding="utf-8") as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError as e:
-            raise MascotError(f"invalid JSON in {path}: {e}") from e
-    return data
+    try:
+        with open(path, encoding="utf-8") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError as e:
+                raise MascotError(f"invalid JSON in {path}: {e}") from e
+    except FileNotFoundError:
+        raise MascotError(f"mascot file not found: {path}") from None
 
 
 def validate_mascot(m):
     for key in ("name", "cell_px", "fps", "legend", "palette", "animations"):
         if key not in m:
             raise MascotError(f"missing required key '{key}'")
+    for key in ("cell_px", "fps"):
+        v = m[key]
+        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+            raise MascotError(f"'{key}' must be a positive integer, got {v!r}")
+    if "scale" in m:
+        s = m["scale"]
+        if isinstance(s, bool) or not isinstance(s, (int, float)) or s <= 0:
+            raise MascotError(f"'scale' must be a positive number, got {s!r}")
     legend, palette, anims = m["legend"], m["palette"], m["animations"]
     for slot, color in palette.items():
         if not _HEX.match(color):
