@@ -64,11 +64,18 @@ def render_animation(mascot, anim, frames, out_dir, overrides=None, target_h=DEF
         os.path.join(out_dir, "f_%03d.png"),
     ]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    proc.stdin.write(first)
-    for frame in frames[1:]:
-        buf, _, _ = grid_to_rgba(frame, legend, palette, cell, overrides)
-        proc.stdin.write(buf)
-    proc.stdin.close()
+    try:
+        proc.stdin.write(first)
+        for frame in frames[1:]:
+            buf, _, _ = grid_to_rgba(frame, legend, palette, cell, overrides)
+            proc.stdin.write(buf)
+    except OSError:
+        pass  # ffmpeg exited early; proc.wait() below reports the failure
+    finally:
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass
     if proc.wait() != 0:
         sys.exit(f"render-mascot: ffmpeg failed for animation '{anim}'")
     return len(frames)
