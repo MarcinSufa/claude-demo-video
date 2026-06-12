@@ -35,6 +35,8 @@ def _fill(timeline, base_emotion, duration):
     out, cursor = [], 0.0
     for s in segs:
         at, until = max(0.0, s["at"]), min(duration, s["until"])
+        if until <= at:
+            continue
         if until <= cursor:
             continue
         at = max(at, cursor)
@@ -54,6 +56,8 @@ def resolve_timeline(stub, duration, events=None, layout=None, half_duration=Non
     # composed from separately-captured clips; their events don't map 1:1).
     if "before" in stub:
         split = min(half_duration, duration) if half_duration else duration / 2.0
+        if split >= duration:
+            return [{"at": 0.0, "until": duration, "emotion": stub["before"]}]
         return [
             {"at": 0.0, "until": split, "emotion": stub["before"]},
             {"at": split, "until": duration, "emotion": stub["after"]},
@@ -88,11 +92,8 @@ def _normalize_sidecar_events(raw_events):
             continue
         label = ev.get("label", "")
         speed = ev.get("speed", 1)
-        if label == "waitToast":
-            # We don't have the toast text in the sidecar (only the selector/label).
-            # Treat the label field as text for severity matching; it will just say
-            # "waitToast" which is benign, yielding "point". Callers that have richer
-            # context should pass normalized events directly to resolve_timeline().
+        is_toast = ev.get("kind") == "waitToast" or label == "waitToast"
+        if is_toast:
             normalized.append({"kind": "waitToast", "at": at, "until": until,
                                 "text": ev.get("text", "")})
         if speed and speed > 1:

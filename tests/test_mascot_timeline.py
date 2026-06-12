@@ -79,6 +79,32 @@ class TestEvents(unittest.TestCase):
         self.assertEqual(tl[-1]["until"], 10.0)
 
 
+class TestSidecarNormalization(unittest.TestCase):
+    def test_kind_field_wins_over_custom_label(self):
+        raw = [{"label": "wait for the error", "kind": "waitToast",
+                "text": "Error: nope", "start": 1.0, "end": 2.0}]
+        evs = rt._normalize_sidecar_events(raw)
+        self.assertEqual(evs[0]["kind"], "waitToast")
+        tl = rt.resolve_timeline(STUB, duration=5.0, events=evs)
+        self.assertIn("panic", [s["emotion"] for s in tl])
+
+    def test_legacy_sidecar_label_still_detected(self):
+        raw = [{"label": "waitToast", "start": 1.0, "end": 2.0, "speed": None, "zoom": None}]
+        evs = rt._normalize_sidecar_events(raw)
+        self.assertEqual(evs[0]["kind"], "waitToast")
+
+    def test_zero_width_event_emits_nothing(self):
+        tl = rt.resolve_timeline(STUB, duration=5.0,
+                                 events=[{"kind": "speed", "at": 2.0, "until": 2.0}])
+        self.assertEqual([s["emotion"] for s in tl], ["idle"])
+
+    def test_half_duration_at_or_past_duration_single_segment(self):
+        stub = dict(STUB, before="panic", after="celebrate")
+        stub.pop("emotion")
+        tl = rt.resolve_timeline(stub, duration=6.0, layout="sequential", half_duration=6.0)
+        self.assertEqual(tl, [{"at": 0.0, "until": 6.0, "emotion": "panic"}])
+
+
 class TestToastSeverity(unittest.TestCase):
     def test_severity_regex(self):
         for text in ("Error: x", "request FAILED", "invalid token", "access denied"):

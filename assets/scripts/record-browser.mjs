@@ -218,6 +218,8 @@ const stamp = () => Math.max(0, (Date.now() - recStart) / 1000 - trimStart);
 for (const action of scene.actions ?? []) {
   const start = stamp();
   let label = action.label;
+  let kind = null;
+  let toastText = null;
   try {
     if (action.hover) { if (action.glow) await glow(page, action.hover); await glideTo(page, action.hover); await page.hover(action.hover); label = label || 'hover'; }
     else if (action.click) { await glideTo(page, action.click); if (action.glow) await glow(page, action.click); await page.click(action.click); label = label || 'click'; }
@@ -228,6 +230,7 @@ for (const action of scene.actions ?? []) {
     else if (action.waitToast !== undefined) {
       const spec = typeof action.waitToast === 'object' ? action.waitToast : { text: action.waitToast };
       await waitToast(page, spec.text, spec.timeout); label = label || 'waitToast';
+      kind = 'waitToast'; toastText = spec.text ?? null;
     }
     else if (typeof action.scroll === 'number') { await page.mouse.wheel(0, action.scroll); label = label || 'scroll'; }
     else if (action.scroll_into_view) { await page.locator(action.scroll_into_view).first().scrollIntoViewIfNeeded().catch(() => {}); label = label || 'scroll_into_view'; }
@@ -236,7 +239,10 @@ for (const action of scene.actions ?? []) {
   } catch (e) {
     console.warn(`action failed (${JSON.stringify(action)}): ${e.message}`);
   }
-  events.push({ label: label || 'action', start, end: stamp(), speed: action.speed ?? 1, zoom: action.zoom ?? null });
+  const ev = { label: label || 'action', start, end: stamp(), speed: action.speed ?? 1, zoom: action.zoom ?? null, kind, text: toastText };
+  if (ev.kind === null) delete ev.kind;
+  if (ev.text === null) delete ev.text;
+  events.push(ev);
 }
 
 // `clip` — resolve the crop-to-region NOW (after actions), so the element you're
