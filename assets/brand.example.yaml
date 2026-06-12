@@ -245,6 +245,7 @@ end_cards:
 # ─── MASCOT (optional) ───────────────────────────────────────────────────
 # Pixel mascot overlay. A pixel-art character reacts to each scene:
 # idles, types along, panics at error toasts, celebrates the AFTER reveal.
+# Available roster characters: octopus, tessel, kangaroo
 # mascot:
 #   character: octopus      # roster character (or ship your own mascot.json next to brand.yaml)
 #   enabled: true
@@ -255,3 +256,13 @@ end_cards:
 #     mascot: { before: panic, after: celebrate }
 #   - type: browser_capture
 #     mascot: { enabled: false }
+# Keyframe choreography — time-stamp emotions and positions within a single scene:
+#   - type: html_mockup
+#     source: mockups/board.html
+#     duration: 15
+#     mascot:
+#       keyframes:
+#         - { at: 0,  emotion: idle }
+#         - { at: 4,  emotion: type }
+#         - { at: 9,  emotion: point, position: bottom-left }
+#         - { at: 13, emotion: celebrate }

@@ -367,9 +367,31 @@ scenes:
 
 **Built-in string scene names** (e.g. `"hero"`, `"graph"`) do not support per-scene `mascot:` overrides — use the dict form `{ type: ..., mascot: {...} }` for that. The global `mascot:` block in `brand.yaml` still applies to all scenes.
 
+**Keyframe choreography.** Within a single scene you can time-stamp emotions and positions using `keyframes`. Each keyframe has an `at` (seconds from scene start), an `emotion`, and an optional `position`. Keyframes replace event-based resolution for that scene; the mascot holds the default emotion/position before the first keyframe if its `at` > 0.
+
+```yaml
+- type: html_mockup
+  source: mockups/board.html
+  duration: 15
+  mascot:
+    keyframes:
+      - { at: 0,  emotion: idle }
+      - { at: 4,  emotion: type }
+      - { at: 9,  emotion: point, position: bottom-left }
+      - { at: 13, emotion: celebrate }
+```
+
+**Walk between positions.** When consecutive keyframes (or segments) have different `position` values, the pipeline automatically inserts a 0.8 s `walk` move-segment at the start of the later segment. The mascot slides from the old anchor to the new one using a lerped ffmpeg expression — no manual walk step required.
+
+**Motion modifiers.** Two emotions add physical motion on top of position:
+- `celebrate` — bounces the mascot vertically (`18 * abs(sin((t-AT)*4))` px) while playing the celebrate animation frames.
+- `panic` — shakes the mascot horizontally (`4 * sin((t-AT)*18)` px) while playing the panic animation frames.
+
+**Roster.** Built-in characters: `octopus`, `tessel`, `kangaroo`. Specify one with `mascot.character` in `brand.yaml`. You can also ship a custom `mascot.json` next to `brand.yaml` (any character name).
+
 **Never blocks the build.** If `render-mascot.py` fails (missing font, bad JSON), the pipeline warns and continues mascot-less — the video still renders.
 
-**Two-layer cache.** Mascot frames are cached separately from scene recordings. Changing `mascot:` config (emotion, position, scale) re-overlays without re-recording, so iteration is fast.
+**Two-layer cache.** Mascot frames are cached separately from scene recordings. Changing `mascot:` config (emotion, position, scale, keyframes) re-overlays without re-recording, so iteration is fast.
 
 ## See also
 

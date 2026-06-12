@@ -28,6 +28,15 @@ class TestMascotNoteFor(unittest.TestCase):
         entry = {"mascot_plan": {"enabled": True, "character": "octopus", "before": "panic", "after": "celebrate"}}
         self.assertEqual(drp.mascot_note_for(entry), "  mascot: octopus (panic->celebrate)")
 
+    def test_keyframes_shows_count(self):
+        kf = [
+            {"at": 0, "emotion": "idle"},
+            {"at": 4, "emotion": "type"},
+            {"at": 9, "emotion": "point", "position": "bottom-left"},
+        ]
+        entry = {"mascot_plan": {"enabled": True, "character": "tessel", "keyframes": kf}}
+        self.assertEqual(drp.mascot_note_for(entry), "  mascot: tessel (3 keyframes)")
+
 
 if __name__ == "__main__":
     unittest.main()

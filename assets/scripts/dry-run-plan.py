@@ -22,8 +22,12 @@ def mascot_note_for(entry):
     m = entry.get("mascot_plan", {})
     if not m.get("enabled"):
         return ""
+    char = m.get("character", "octopus")
+    kf = m.get("keyframes")
+    if kf:
+        return f"  mascot: {char} ({len(kf)} keyframes)"
     emo = m.get("emotion") or f"{m.get('before')}->{m.get('after')}"
-    return f"  mascot: {m.get('character', 'octopus')} ({emo})"
+    return f"  mascot: {char} ({emo})"
 
 
 def main():
