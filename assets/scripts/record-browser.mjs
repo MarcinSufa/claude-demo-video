@@ -249,7 +249,9 @@ for (const action of scene.actions ?? []) {
 // changing (e.g. a dialog opened mid-scene) is on screen when we measure it.
 let cropFilter = '';
 if (CLIP) {
-  const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+  // Round DOWN to even: rounding up could push cx+cw / cy+ch past the frame
+  // edge when the remaining span is odd, and ffmpeg rejects such crops.
+  const even = (n) => Math.max(2, Math.floor(n / 2) * 2);
   let rect = null;
   if (typeof CLIP === 'string' || CLIP.selector) {
     const sel = typeof CLIP === 'string' ? CLIP : CLIP.selector;

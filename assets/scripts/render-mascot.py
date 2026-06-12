@@ -9,6 +9,7 @@ grid_to_rgba()/upscale_factor() are the pure, unit-tested core.
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -51,6 +52,10 @@ def upscale_factor(native_h, target_h, scale):
 
 
 def render_animation(mascot, anim, frames, out_dir, overrides=None, target_h=DEFAULT_TARGET_H):
+    # Clear stale frames: switching characters or shrinking an animation must not
+    # leave old f_NNN.png files behind (overlay reads the whole f_%03d sequence).
+    if os.path.isdir(out_dir):
+        shutil.rmtree(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     legend, palette, cell = mascot["legend"], mascot["palette"], mascot["cell_px"]
     native_h = len(frames[0]) * cell
@@ -87,9 +92,15 @@ def main():
     ap.add_argument("mascot_json")
     ap.add_argument("out_dir")
     ap.add_argument("--target-height", type=int, default=DEFAULT_TARGET_H)
+    ap.add_argument("--scale", type=float, default=None,
+                    help="brand.yaml mascot.scale — overrides the file's own scale")
     args = ap.parse_args()
     mascot = load_mascot(args.mascot_json)
     validate_mascot(mascot)
+    if args.scale is not None:
+        if args.scale <= 0:
+            sys.exit("render-mascot: --scale must be > 0")
+        mascot["scale"] = args.scale
     for anim, frames in mascot["animations"].items():
         n = render_animation(mascot, anim, frames,
                              os.path.join(args.out_dir, anim),

@@ -96,7 +96,8 @@ if [ "$MASCOT_ENABLED" = "1" ]; then
     fi
   fi
   if [ -f mascot.json ]; then
-    python render-mascot.py mascot.json mascot \
+    MASCOT_SCALE=$(python -c "import json;s=json.load(open('config.json')).get('mascot',{}).get('scale');print(s if s else '')")
+    python render-mascot.py mascot.json mascot ${MASCOT_SCALE:+--scale "$MASCOT_SCALE"} \
       || { echo "WARNING: mascot render failed - building mascot-less"; rm -rf mascot mascot.json; }
   fi
 fi

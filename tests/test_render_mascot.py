@@ -99,3 +99,20 @@ class TestGoldenFrameTessel(unittest.TestCase):
         self.assertEqual(
             _rendered_idle_sha256("tessel.json"),
             "379e42f282055582a03f6d0c42944605c481ff5329b6435ed957f09ca26cfea9")
+
+
+class TestStaleFrameClearing(unittest.TestCase):
+    def test_rerender_with_fewer_frames_removes_stale_pngs(self):
+        import shutil as _sh, subprocess as _sp, tempfile as _tf
+        if not _sh.which("ffmpeg"):
+            self.skipTest("ffmpeg not installed")
+        mascot = {"name": "t", "cell_px": 2, "fps": 4, "scale": 1.0,
+                  "legend": {".": None, "b": "body"},
+                  "palette": {"body": "#ff0000"}}
+        with _tf.TemporaryDirectory() as d:
+            out = os.path.join(d, "idle")
+            rm.render_animation(mascot, "idle", [["b"], ["b"], ["b"]], out)
+            self.assertTrue(os.path.exists(os.path.join(out, "f_003.png")))
+            rm.render_animation(mascot, "idle", [["b"], ["b"]], out)
+            self.assertTrue(os.path.exists(os.path.join(out, "f_002.png")))
+            self.assertFalse(os.path.exists(os.path.join(out, "f_003.png")))
