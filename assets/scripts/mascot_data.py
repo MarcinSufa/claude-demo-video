@@ -10,7 +10,8 @@ import json
 import re
 
 REQUIRED_ANIMATIONS = (
-    "idle", "type", "panic", "celebrate", "sleep", "point", "enter", "exit",
+    "idle", "type", "walk", "panic", "celebrate", "sleep", "point", "enter",
+    "exit",
 )
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 

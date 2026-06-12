@@ -18,6 +18,7 @@ MINIMAL = {
     "animations": {
         "idle": [[".b.", "beb", ".b."], [".b.", "bbb", ".b."]],
         "type": [[".b.", "beb", "b.b"]],
+        "walk": [[".b.", "beb", "b.."], [".b.", "beb", "..b"]],
         "panic": [["e.e", ".b.", "b.b"]],
         "celebrate": [["b.b", ".b.", "..."]],
         "sleep": [["...", ".b.", "bbb"]],

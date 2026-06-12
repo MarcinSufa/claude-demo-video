@@ -85,6 +85,36 @@
         ".bb.bb.bb.bb.bb."
       ]
     ],
+    "walk": [
+      [
+        "....bbbbbbbb....",
+        "..bbbbbbbbbbbb..",
+        ".bbbbbbbbbbbbbb.",
+        ".bbe.bbbbbb.ebb.",
+        ".bbe.bbbbbb.ebb.",
+        ".bbbbbbbbbbbbbb.",
+        ".bablllllllbab..",
+        ".bbllllllllllbb.",
+        "..bbbbbbbbbbbb..",
+        "..b.b..bb..b.b..",
+        ".bb..b.bb.b..bb.",
+        ".b....b..b....b."
+      ],
+      [
+        "....bbbbbbbb....",
+        "..bbbbbbbbbbbb..",
+        ".bbbbbbbbbbbbbb.",
+        ".bbe.bbbbbb.ebb.",
+        ".bbe.bbbbbb.ebb.",
+        ".bbbbbbbbbbbbbb.",
+        ".bablllllllbab..",
+        ".bbllllllllllbb.",
+        "..bbbbbbbbbbbb..",
+        "..b.b..bb..b.b..",
+        "..b.bb.bb.bb.b..",
+        "...b..b..b..b..."
+      ]
+    ],
     "panic": [
       [
         "....bbbbbbbb....",

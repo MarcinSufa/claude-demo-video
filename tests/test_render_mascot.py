@@ -52,25 +52,42 @@ class TestTargetHeight(unittest.TestCase):
         self.assertEqual(rm.upscale_factor(native_h=96, target_h=140, scale=2.0), 3)
 
 
+def _rendered_idle_sha256(mascot_filename):
+    """Render a mascot and return sha256 of decoded RGBA of idle/f_001.png."""
+    import hashlib
+    import subprocess
+    import sys
+    import tempfile
+    scripts = os.path.join(os.path.dirname(__file__), "..", "assets", "scripts")
+    with tempfile.TemporaryDirectory() as d:
+        subprocess.check_call([
+            sys.executable,
+            os.path.join(scripts, "render-mascot.py"),
+            os.path.join(scripts, "..", "mascots", mascot_filename), d,
+        ], stdout=subprocess.DEVNULL)
+        raw = subprocess.check_output([
+            "ffmpeg", "-v", "error", "-i", os.path.join(d, "idle", "f_001.png"),
+            "-f", "rawvideo", "-pix_fmt", "rgba", "-"])
+        return hashlib.sha256(raw).hexdigest()
+
+
+def _require_ffmpeg(test):
+    import shutil
+    if not shutil.which("ffmpeg"):
+        test.skipTest("ffmpeg not installed")
+
+
 class TestGoldenFrame(unittest.TestCase):
     def test_octopus_idle_frame0_is_stable(self):
-        import hashlib
-        import shutil
-        import subprocess
-        import sys
-        import tempfile
-        if not shutil.which("ffmpeg"):
-            self.skipTest("ffmpeg not installed")
-        scripts = os.path.join(os.path.dirname(__file__), "..", "assets", "scripts")
-        with tempfile.TemporaryDirectory() as d:
-            subprocess.check_call([
-                sys.executable,
-                os.path.join(scripts, "render-mascot.py"),
-                os.path.join(scripts, "..", "mascots", "octopus.json"), d,
-            ], stdout=subprocess.DEVNULL)
-            raw = subprocess.check_output([
-                "ffmpeg", "-v", "error", "-i", os.path.join(d, "idle", "f_001.png"),
-                "-f", "rawvideo", "-pix_fmt", "rgba", "-"])
-            self.assertEqual(
-                hashlib.sha256(raw).hexdigest(),
-                "9d09707504268b30e039d6154715c5fdcf8ddf60606ab4ef908d3246984f00cc")
+        _require_ffmpeg(self)
+        self.assertEqual(
+            _rendered_idle_sha256("octopus.json"),
+            "9d09707504268b30e039d6154715c5fdcf8ddf60606ab4ef908d3246984f00cc")
+
+
+class TestGoldenFrameTessel(unittest.TestCase):
+    def test_tessel_idle_frame0_is_stable(self):
+        _require_ffmpeg(self)
+        self.assertEqual(
+            _rendered_idle_sha256("tessel.json"),
+            "5a4386a77881ed086d6f2e7b3029214e79eb56d3e3abb424fd8bc23b1bded973")
