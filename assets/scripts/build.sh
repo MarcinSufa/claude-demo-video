@@ -76,6 +76,12 @@ if [ "$PLAN_ONLY" = "1" ]; then
   exit $rc
 fi
 
+# html_mockup scenes: the http server serves THIS dir (.build), so user mockups
+# must be copied in (record-browser hits http://localhost:8765/<basename>).
+if [ -d "$ROOT/mockups" ]; then
+  cp "$ROOT"/mockups/*.html . 2>/dev/null || true
+fi
+
 # Mascot: resolve mascot.json (next to brand.yaml) and render sprite frames.
 MASCOT_ENABLED=$(python -c "import json;m=json.load(open('config.json')).get('mascot',{});print(1 if m.get('enabled', bool(m)) else 0)")
 if [ "$MASCOT_ENABLED" = "1" ]; then
