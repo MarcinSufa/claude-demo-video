@@ -54,5 +54,23 @@ class TestMascotStub(unittest.TestCase):
         self.assertFalse(stub["enabled"])
 
 
+class TestScreenRecordingSafety(unittest.TestCase):
+    def test_mascot_enabled_retargets_mp4_away_from_source(self):
+        # entry as produced by custom_arc for screen_recording
+        entry = {"id": "c1", "type": "screen_recording",
+                 "source": "footage/raw.mp4", "mp4": "footage/raw.mp4",
+                 "mascot_plan": {"enabled": True}}
+        ps.retarget_screen_recording(entry)
+        self.assertNotEqual(entry["mp4"], entry["source"])
+        self.assertEqual(entry["source"], "footage/raw.mp4")
+
+    def test_mascot_disabled_keeps_source_path(self):
+        entry = {"id": "c1", "type": "screen_recording",
+                 "source": "footage/raw.mp4", "mp4": "footage/raw.mp4",
+                 "mascot_plan": {"enabled": False}}
+        ps.retarget_screen_recording(entry)
+        self.assertEqual(entry["mp4"], "footage/raw.mp4")
+
+
 if __name__ == "__main__":
     unittest.main()

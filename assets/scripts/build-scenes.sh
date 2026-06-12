@@ -73,7 +73,7 @@ while IFS=$'\t' read -r id type mp4 extra; do
     screen_recording)
       src=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin)['source'])")
       [ -f "$src" ] || { echo "  missing screen_recording source: $src"; exit 1; }
-      echo "  using existing: $src" ;;
+      if [ "$src" != "$mp4" ]; then cp "$src" "$mp4"; echo "  copied for overlay: $mp4"; else echo "  using existing: $src"; fi ;;
     before_after)
       # Record any capture halves (record-browser writes to each half's capture.output),
       # then make-before-after.py labels + composes the two clips into one scene mp4.
@@ -119,7 +119,11 @@ while IFS=$'\t' read -r id type mp4 extra; do
       echo "  -> overlay cached"
     else
       python overlay-mascot.py "$src" "$mp4.tmp.mp4" mascot "$src.mascot.json" --speedup "${DEMO_SPEEDUP:-1.0}"
-      [ -f "$mp4.tmp.mp4" ] && mv -f "$mp4.tmp.mp4" "$mp4"
+      if [ -f "$mp4.tmp.mp4" ]; then
+        mv -f "$mp4.tmp.mp4" "$mp4"
+      elif [ "$src" != "$mp4" ]; then
+        cp "$src" "$mp4"   # empty timeline: ship the pristine clip, not last build's overlay
+      fi
       python scene_cache.py overlay-save "$mp4" "$src" mascot.json "$src.mascot.json"
     fi
   elif [ -f "$mp4.capture.mp4" ]; then

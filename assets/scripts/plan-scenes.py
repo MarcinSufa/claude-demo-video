@@ -164,8 +164,8 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
             }
             entry["html_source"] = src
         elif t == "screen_recording":
-            entry["source"] = sc["source"]  # existing mp4, no build needed
-            entry["mp4"] = sc["source"]
+            entry["source"] = resolve_source(sc["source"])  # existing mp4, no build needed
+            entry["mp4"] = entry["source"]
         elif t == "terminal":
             entry["scene"] = sc.get("scene", "hero")
             entry["mp4"] = f"{sid}_terminal.mp4"
@@ -218,6 +218,14 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
     return plan
 
 
+def retarget_screen_recording(entry):
+    """screen_recording: never let the pipeline write onto the user's source
+    footage. When the mascot will overlay this scene, retarget the entry's
+    mp4 to a build-local copy (build-scenes.sh makes the copy)."""
+    if entry.get("type") == "screen_recording" and entry["mascot_plan"].get("enabled"):
+        entry["mp4"] = f"videos/{entry['id']}_screen.mp4"
+
+
 def main():
     if not os.path.exists(CONFIG):
         sys.exit(f"Missing {CONFIG} — run apply-brand.py first")
@@ -256,6 +264,7 @@ def main():
     for entry in plan:
         ov = entry.pop("_mascot_override", None)
         entry["mascot_plan"] = mascot_stub(mascot_cfg, entry, ov)
+        retarget_screen_recording(entry)
 
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump({"arc": label, "scenes": plan}, f, indent=2)
