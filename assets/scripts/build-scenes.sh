@@ -73,7 +73,14 @@ while IFS=$'\t' read -r id type mp4 extra; do
     screen_recording)
       src=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin)['source'])")
       [ -f "$src" ] || { echo "  missing screen_recording source: $src"; exit 1; }
-      if [ "$src" != "$mp4" ]; then cp "$src" "$mp4"; echo "  copied for overlay: $mp4"; else echo "  using existing: $src"; fi ;;
+      if [ "$src" != "$mp4" ]; then
+        # Mascot retargeted this scene to a build-local clip. Keep the pristine
+        # source as the .capture.mp4 sidecar (NOT as $mp4) so the overlay layer
+        # can cache — copying onto $mp4 would clobber the previous overlaid clip
+        # and bust the overlay cache on every run.
+        cmp -s "$src" "$mp4.capture.mp4" 2>/dev/null || cp "$src" "$mp4.capture.mp4"
+        echo "  pristine copy for overlay: $mp4.capture.mp4"
+      else echo "  using existing: $src"; fi ;;
     before_after)
       # Record any capture halves (record-browser writes to each half's capture.output),
       # then make-before-after.py labels + composes the two clips into one scene mp4.
