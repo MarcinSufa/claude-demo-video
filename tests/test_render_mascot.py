@@ -50,3 +50,27 @@ class TestTargetHeight(unittest.TestCase):
         self.assertEqual(rm.upscale_factor(native_h=96, target_h=140, scale=1.0), 1)
         self.assertEqual(rm.upscale_factor(native_h=96, target_h=280, scale=1.0), 3)
         self.assertEqual(rm.upscale_factor(native_h=96, target_h=140, scale=2.0), 3)
+
+
+class TestGoldenFrame(unittest.TestCase):
+    def test_octopus_idle_frame0_is_stable(self):
+        import hashlib
+        import shutil
+        import subprocess
+        import sys
+        import tempfile
+        if not shutil.which("ffmpeg"):
+            self.skipTest("ffmpeg not installed")
+        scripts = os.path.join(os.path.dirname(__file__), "..", "assets", "scripts")
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.check_call([
+                sys.executable,
+                os.path.join(scripts, "render-mascot.py"),
+                os.path.join(scripts, "..", "mascots", "octopus.json"), d,
+            ], stdout=subprocess.DEVNULL)
+            raw = subprocess.check_output([
+                "ffmpeg", "-v", "error", "-i", os.path.join(d, "idle", "f_001.png"),
+                "-f", "rawvideo", "-pix_fmt", "rgba", "-"])
+            self.assertEqual(
+                hashlib.sha256(raw).hexdigest(),
+                "9d09707504268b30e039d6154715c5fdcf8ddf60606ab4ef908d3246984f00cc")
