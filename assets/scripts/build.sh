@@ -63,6 +63,8 @@ export DEMO_CONFIG=config.json
 # resolve user-relative scene source clips (e.g. before_after footage/*.mp4)
 # against it — same as the backdrop handling above.
 export DEMO_ROOT="$ROOT"
+# Mascot overlay phase needs the global speedup to time its timeline correctly.
+export DEMO_SPEEDUP=$(python -c "import json;print(json.load(open('config.json')).get('scenes',{}).get('speedup',1.0))")
 
 # Resolve the scene plan early (cheap) — drives both --plan and the arc-aware gate.
 python plan-scenes.py

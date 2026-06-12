@@ -43,11 +43,15 @@ def build_overlay_cmd(capture, out, frames_dir, timeline, pos, fps, speedup):
     for i, seg in enumerate(timeline):
         inp = emotions.index(seg["emotion"]) + 1
         label = f"[v{i}]" if i < len(timeline) - 1 else "[vout]"
+        # shortest=1: the looped PNG inputs never EOF; end each stage with the
+        # finite main chain or ffmpeg encodes forever.
         parts.append(
-            f"{src}[{inp}:v]overlay={x}:{y}:"
+            f"{src}[{inp}:v]overlay={x}:{y}:shortest=1:"
             f"enable='between(t,{seg['at']:.3f},{seg['until']:.3f})'{label}")
         src = f"[v{i}]"
+    # -shortest: the looped PNG inputs never EOF; bound the output to the capture.
     cmd += ["-filter_complex", ";".join(parts), "-map", "[vout]", "-map", "0:a?",
+            "-shortest",
             "-c:v", "libx264", "-preset", "slow", "-crf", "18",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             "-c:a", "copy", out]

@@ -35,12 +35,15 @@ while IFS=$'\t' read -r id type mp4 extra; do
   force=0
   [ "$NO_CACHE" = "1" ] && force=1
   [ -n "$ONLY" ] && [ "$ONLY" = "$id" ] && force=1
-  if [ "$type" != "screen_recording" ] && [ "$force" = "0" ] \
-     && python scene_cache.py check "$PLAN" "$id" 2>/dev/null; then
-    echo "  -> cached (unchanged), skipping capture"
-    continue
-  fi
 
+  # ── Capture phase ──
+  # Cached when a pristine pre-mascot copy exists AND the capture fingerprint
+  # matches (mascot_plan changes don't invalidate the capture layer).
+  if [ "$type" != "screen_recording" ] && [ "$force" = "0" ] \
+     && [ -f "$mp4.capture.mp4" ] \
+     && python scene_cache.py check "$PLAN" "$id" 2>/dev/null; then
+    echo "  -> capture cached (unchanged)"
+  else
   case "$type" in
     terminal)
       tape=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin).get('tape',''))")
@@ -98,8 +101,31 @@ while IFS=$'\t' read -r id type mp4 extra; do
     python normalize-clip.py "$mp4" "$dur"
   fi
 
-  # P0-2: record the cache fingerprint of the finished (normalized) clip.
-  [ "$type" != "screen_recording" ] && python scene_cache.py save "$PLAN" "$id"
+  # Keep a pristine pre-mascot copy + record the capture fingerprint of the
+  # finished (normalized) clip. screen_recording is never cached/copied.
+  if [ "$type" != "screen_recording" ]; then
+    cp "$mp4" "$mp4.capture.mp4"
+    python scene_cache.py save "$PLAN" "$id"
+  fi
+  fi  # end capture phase
+
+  # ── Overlay phase (mascot) ──
+  enabled=$(echo "$extra" | python -c "import json,sys;print(1 if json.load(sys.stdin).get('mascot_plan',{}).get('enabled') else 0)")
+  if [ "$enabled" = "1" ] && [ -d mascot ]; then
+    src="$mp4"; [ -f "$mp4.capture.mp4" ] && src="$mp4.capture.mp4"
+    python resolve-mascot-timeline.py "$PLAN" "$id"
+    if [ "$force" = "0" ] \
+       && python scene_cache.py overlay-check "$mp4" "$src" mascot.json "$src.mascot.json" 2>/dev/null; then
+      echo "  -> overlay cached"
+    else
+      python overlay-mascot.py "$src" "$mp4.tmp.mp4" mascot "$src.mascot.json" --speedup "${DEMO_SPEEDUP:-1.0}"
+      [ -f "$mp4.tmp.mp4" ] && mv -f "$mp4.tmp.mp4" "$mp4"
+      python scene_cache.py overlay-save "$mp4" "$src" mascot.json "$src.mascot.json"
+    fi
+  elif [ -f "$mp4.capture.mp4" ]; then
+    # Mascot disabled (possibly after a previous overlaid build) — ship pristine.
+    cp "$mp4.capture.mp4" "$mp4"
+  fi
 done < .scene-rows.tsv
 
 rm -f .scene-rows.tsv
