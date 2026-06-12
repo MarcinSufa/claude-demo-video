@@ -210,3 +210,17 @@ before_after halves.
 - Free-roaming pathfinding movement (bounded "moments" only).
 - Image-AI sprite generation; sprites are deterministic data files.
 - Sound effects tied to mascot actions.
+
+## Future work (v2 — not in this spec)
+
+Inspired by Anthropic's "Introducing agent view in Claude Code" film
+(music-only, Clawd in a cowboy hat walking across and lassoing floating
+terminal windows on a pastel canvas):
+
+- **`diorama` scene type** — N sub-captures (terminal/browser) composited at
+  offsets on a large canvas with an ffmpeg pan/zoom camera path between them.
+- **Prop interactions** — extend the moments system with scene-geometry
+  awareness so the mascot can stand on / walk along / drag window edges
+  (window rects are already known to the compositor).
+- **Per-video props** — one-off accessories (hat, lasso) for a story gag; same
+  pixel-grid accessory mechanism as brand personalization.
