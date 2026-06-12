@@ -102,5 +102,11 @@ class TestOctopusShips(unittest.TestCase):
         validate_mascot(load_mascot(p))
 
 
+class TestKangarooShips(unittest.TestCase):
+    def test_bundled_kangaroo_validates(self):
+        p = os.path.join(os.path.dirname(__file__), "..", "assets", "mascots", "kangaroo.json")
+        validate_mascot(load_mascot(p))
+
+
 if __name__ == "__main__":
     unittest.main()

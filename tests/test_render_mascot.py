@@ -85,6 +85,14 @@ class TestGoldenFrame(unittest.TestCase):
             "9d09707504268b30e039d6154715c5fdcf8ddf60606ab4ef908d3246984f00cc")
 
 
+class TestGoldenFrameKangaroo(unittest.TestCase):
+    def test_kangaroo_idle_frame0_is_stable(self):
+        _require_ffmpeg(self)
+        self.assertEqual(
+            _rendered_idle_sha256("kangaroo.json"),
+            "048add4a13a03e9eaeb0ee8b1bc8250c59c02f9a48ac3e5123abd9e914bad164")
+
+
 class TestGoldenFrameTessel(unittest.TestCase):
     def test_tessel_idle_frame0_is_stable(self):
         _require_ffmpeg(self)
