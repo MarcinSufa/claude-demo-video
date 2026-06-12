@@ -54,6 +54,41 @@ class TestMascotStub(unittest.TestCase):
         self.assertFalse(stub["enabled"])
 
 
+class TestMascotStubKeyframes(unittest.TestCase):
+    def test_keyframes_pass_through_validated(self):
+        kfs = [{"at": 0, "emotion": "idle"},
+               {"at": 4.5, "emotion": "point", "position": "bottom-left"}]
+        stub = ps.mascot_stub(CFG, {"type": "browser_capture"}, {"keyframes": kfs})
+        self.assertEqual(stub["keyframes"], kfs)
+        # default emotion coexists with keyframes
+        self.assertEqual(stub["emotion"], "idle")
+
+    def test_empty_keyframes_list_not_copied(self):
+        stub = ps.mascot_stub(CFG, {"type": "terminal"}, {"keyframes": []})
+        self.assertNotIn("keyframes", stub)
+
+    def test_invalid_keyframe_missing_emotion_exits(self):
+        with self.assertRaises(SystemExit) as cm:
+            ps.mascot_stub(CFG, {"id": "s1", "type": "terminal"},
+                           {"keyframes": [{"at": 1.0}]})
+        self.assertIn("s1", str(cm.exception))
+
+    def test_invalid_keyframe_negative_at_exits(self):
+        with self.assertRaises(SystemExit):
+            ps.mascot_stub(CFG, {"type": "terminal"},
+                           {"keyframes": [{"at": -1, "emotion": "idle"}]})
+
+    def test_invalid_keyframe_non_numeric_at_exits(self):
+        with self.assertRaises(SystemExit):
+            ps.mascot_stub(CFG, {"type": "terminal"},
+                           {"keyframes": [{"at": "soon", "emotion": "idle"}]})
+
+    def test_invalid_keyframe_non_string_position_exits(self):
+        with self.assertRaises(SystemExit):
+            ps.mascot_stub(CFG, {"type": "terminal"},
+                           {"keyframes": [{"at": 0, "emotion": "idle", "position": 3}]})
+
+
 class TestScreenRecordingSafety(unittest.TestCase):
     def test_mascot_enabled_retargets_mp4_away_from_source(self):
         # entry as produced by custom_arc for screen_recording

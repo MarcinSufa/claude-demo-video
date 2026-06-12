@@ -52,6 +52,28 @@ MASCOT_TYPE_DEFAULTS = {
 }
 
 
+def _validated_keyframes(keyframes, entry):
+    """Validate a scene's mascot keyframes list (stage-1; Phase 4).
+    Each item: `at` number >= 0 (required), `emotion` string (required),
+    `position` optional string. Exits with scene context on bad input."""
+    ctx = entry.get("id") or entry.get("type", "scene")
+    if not isinstance(keyframes, list):
+        sys.exit(f"scene '{ctx}': mascot.keyframes must be a list")
+    for i, kf in enumerate(keyframes):
+        where = f"scene '{ctx}': mascot.keyframes[{i}]"
+        if not isinstance(kf, dict):
+            sys.exit(f"{where} must be a dict with at/emotion")
+        at = kf.get("at")
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or at < 0:
+            sys.exit(f"{where}: 'at' must be a number >= 0")
+        if not isinstance(kf.get("emotion"), str):
+            sys.exit(f"{where}: 'emotion' must be a string")
+        pos = kf.get("position")
+        if pos is not None and not isinstance(pos, str):
+            sys.exit(f"{where}: 'position' must be a string when present")
+    return keyframes
+
+
 def mascot_stub(mascot_cfg, entry, scene_override):
     """Stage-1 mascot resolution: defaults + overrides, no timing.
     mascot_cfg is config.json's `mascot` block; scene_override is the scene's
@@ -78,6 +100,10 @@ def mascot_stub(mascot_cfg, entry, scene_override):
         stub["emotion"] = ov.get("emotion", "point")
     else:
         stub["emotion"] = ov.get("emotion", MASCOT_TYPE_DEFAULTS.get(t, "idle"))
+    # Keyframes coexist with the default emotion (used before the first
+    # keyframe when its `at` > 0); stage-2 turns them into segments.
+    if ov.get("keyframes"):
+        stub["keyframes"] = _validated_keyframes(ov["keyframes"], entry)
     return stub
 
 
