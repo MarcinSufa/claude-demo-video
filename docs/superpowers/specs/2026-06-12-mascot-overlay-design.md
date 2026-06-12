@@ -211,6 +211,34 @@ before_after halves.
 - Image-AI sprite generation; sprites are deterministic data files.
 - Sound effects tied to mascot actions.
 
+## Phase 4 addendum (approved 2026-06-12, after v1 feedback)
+
+v1 shipped a corner sidekick with one emotion per scene — too static in practice
+(html_mockup scenes produce no events). Phase 4 adds motion:
+
+- **Keyframes (user choreography).** Per-scene
+  `mascot: { keyframes: [{at: 0, emotion: idle}, {at: 3, emotion: point, position: bottom-left}] }`.
+  Keyframes win over auto-resolution for that scene; `at` is seconds into the
+  final clip, clamped to duration; each segment may carry its own `position`.
+  This revisits the brainstorm decision ("auto + override" over keyframes) —
+  keyframes are now an additional, optional layer, not a replacement.
+- **Movement.** When consecutive segments have different positions, the mascot
+  WALKS between anchors: an inserted move segment (~0.8s) lerps overlay x/y via
+  ffmpeg time expressions and plays the `type` animation as the walk cycle.
+- **Emotion motion modifiers.** `celebrate` → bouncing y offset; `panic` →
+  small x shake; `hide` (new pseudo-emotion) → slides below the bottom edge.
+  Implemented as overlay x/y expressions, no new sprite frames required.
+- **Corner auto-flip** (from the original phase 4 list) remains optional —
+  delivered only if trivial after the above.
+- **Art v2 (user feedback: "it doesn't look good").** The octopus is redrawn on
+  a larger canvas (~24×20 cells) with two new palette slots — `outline` (dark
+  silhouette edge, the single biggest readability win at small sizes) and
+  `shade` (body shading) — and richer animation: 3–4 frames per emotion, a
+  dedicated 4-frame `walk` cycle (used by move segments), clearly readable eye
+  states (open / wide / closed), and expressive poses (panic arms up, celebrate
+  jump pose, point with an actually extended arm). Format unchanged — only the
+  data file and its golden hash change.
+
 ## Future work (v2 — not in this spec)
 
 Inspired by Anthropic's "Introducing agent view in Claude Code" film
