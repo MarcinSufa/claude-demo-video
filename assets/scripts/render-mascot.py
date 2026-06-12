@@ -7,6 +7,7 @@ ffmpeg (rawvideo RGBA piped in), so there is no Pillow dependency.
 grid_to_rgba()/upscale_factor() are the pure, unit-tested core.
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -94,6 +95,9 @@ def main():
                              os.path.join(args.out_dir, anim),
                              target_h=args.target_height)
         print(f"  mascot {anim}: {n} frames")
+    with open(os.path.join(args.out_dir, "mascot-meta.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"fps": mascot["fps"], "name": mascot["name"]}, f)
 
 
 if __name__ == "__main__":
