@@ -241,3 +241,17 @@ end_cards:
   tagline: "Memory that compounds."           # italic editorial line
   spec_line: "encrypted · multi-agent · mcp-native"  # 3 dots in caps
   url_pill: "myproduct.com"                   # URL in pill at bottom
+
+# ─── MASCOT (optional) ───────────────────────────────────────────────────
+# Pixel mascot overlay. A pixel-art character reacts to each scene:
+# idles, types along, panics at error toasts, celebrates the AFTER reveal.
+# mascot:
+#   character: octopus      # roster character (or ship your own mascot.json next to brand.yaml)
+#   enabled: true
+#   position: bottom-right  # bottom-left | top-right | top-left
+#   scale: 1.0
+# Per-scene override inside scenes.sequence items:
+#   - type: before_after
+#     mascot: { before: panic, after: celebrate }
+#   - type: browser_capture
+#     mascot: { enabled: false }

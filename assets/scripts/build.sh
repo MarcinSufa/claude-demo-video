@@ -16,6 +16,7 @@ export PYTHONUTF8=1
 
 ROOT="$(pwd)"
 SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"   # .../scripts
+SKILL_ASSETS="$(dirname "$SKILL_SCRIPTS")"        # .../assets  (mascots live at $SKILL_ASSETS/mascots)
 BUILD=".build"
 
 # ─── Progress bar + elapsed/ETA ─────────────────────────────────────────
@@ -54,7 +55,7 @@ python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyam
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
@@ -73,6 +74,25 @@ python plan-scenes.py
 if [ "$PLAN_ONLY" = "1" ]; then
   rc=0; python dry-run-plan.py || rc=$?
   exit $rc
+fi
+
+# Mascot: resolve mascot.json (next to brand.yaml) and render sprite frames.
+MASCOT_ENABLED=$(python -c "import json;m=json.load(open('config.json')).get('mascot',{});print(1 if m.get('enabled', bool(m)) else 0)")
+if [ "$MASCOT_ENABLED" = "1" ]; then
+  if [ -f "$ROOT/mascot.json" ]; then
+    cp "$ROOT/mascot.json" mascot.json
+  else
+    CHAR=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('character','octopus'))")
+    if [ -f "$SKILL_ASSETS/mascots/$CHAR.json" ]; then
+      cp "$SKILL_ASSETS/mascots/$CHAR.json" mascot.json
+    else
+      echo "WARNING: mascot character '$CHAR' not found and no mascot.json - building mascot-less"
+    fi
+  fi
+  if [ -f mascot.json ]; then
+    python render-mascot.py mascot.json mascot \
+      || { echo "WARNING: mascot render failed - building mascot-less"; rm -rf mascot mascot.json; }
+  fi
 fi
 
 # Rough ETA from the scene count (TTS + captures + assemble/encode dominate).

@@ -327,6 +327,7 @@ def main():
         "project": brand.get("project", {}),
         "music": brand.get("music", {"mode": "procedural", "volume": 0.45}),
         "auth": brand.get("auth", {}),  # P2-1: optional login flow for make-auth.mjs
+        "mascot": brand.get("mascot", {}),  # mascot overlay (spec 2026-06-12)
     }
     with open(os.path.join(args.out, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
