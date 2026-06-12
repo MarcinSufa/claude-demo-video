@@ -86,6 +86,18 @@ def build_google_fonts_link(families):
     return url, unknown
 
 
+def _coerce_mascot(m):
+    """brand.yaml `mascot:` accepts a dict; tolerate scalars: truthy string ->
+    {character: <str>}, true -> {enabled: True}, anything falsy -> {} (disabled)."""
+    if isinstance(m, dict):
+        return m
+    if isinstance(m, str) and m:
+        return {"character": m, "enabled": True}
+    if m is True:
+        return {"enabled": True}
+    return {}
+
+
 def deep_get(d, path, default=None):
     cur = d
     for key in path.split("."):
@@ -327,7 +339,7 @@ def main():
         "project": brand.get("project", {}),
         "music": brand.get("music", {"mode": "procedural", "volume": 0.45}),
         "auth": brand.get("auth", {}),  # P2-1: optional login flow for make-auth.mjs
-        "mascot": brand.get("mascot", {}),  # mascot overlay (spec 2026-06-12)
+        "mascot": _coerce_mascot(brand.get("mascot", {})),  # mascot overlay (spec 2026-06-12)
     }
     with open(os.path.join(args.out, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
