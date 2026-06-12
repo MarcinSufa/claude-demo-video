@@ -90,4 +90,4 @@ class TestGoldenFrameTessel(unittest.TestCase):
         _require_ffmpeg(self)
         self.assertEqual(
             _rendered_idle_sha256("tessel.json"),
-            "5a4386a77881ed086d6f2e7b3029214e79eb56d3e3abb424fd8bc23b1bded973")
+            "379e42f282055582a03f6d0c42944605c481ff5329b6435ed957f09ca26cfea9")
