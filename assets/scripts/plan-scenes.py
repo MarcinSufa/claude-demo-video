@@ -104,7 +104,11 @@ ARCS = {
 
 def resolve_sequence(seq, ctx=None):
     """Resolve an ordered list of (built-in name | custom scene dict) into plan entries.
-    This is the single mechanism for ANY scene count + order."""
+    This is the single mechanism for ANY scene count + order.
+
+    Note: built-in string scene names (e.g. "hero", "graph") don't support per-scene
+    ``mascot:`` overrides — use the dict form ``{"type": ..., "mascot": {...}}`` for that.
+    The global ``mascot:`` block in brand.yaml still applies to all scenes."""
     ctx = ctx or {}
     plan = []
     for i, item in enumerate(seq):
