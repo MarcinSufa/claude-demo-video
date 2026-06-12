@@ -40,6 +40,47 @@ def resolve_source(path):
     return path
 
 
+# Default whole-scene emotion per scene type (stage-1; exact timing is resolved
+# at build time by resolve-mascot-timeline.py against the real clip).
+MASCOT_TYPE_DEFAULTS = {
+    "terminal": "type",
+    "multi_agent": "type",
+    "graph": "idle",
+    "browser_capture": "idle",
+    "html_mockup": "idle",
+    "screen_recording": "idle",
+}
+
+
+def mascot_stub(mascot_cfg, entry, scene_override):
+    """Stage-1 mascot resolution: defaults + overrides, no timing.
+    mascot_cfg is config.json's `mascot` block; scene_override is the scene's
+    `mascot:` dict (or None). Returns the mascot_plan stub for this entry."""
+    ov = scene_override or {}
+    enabled = bool(mascot_cfg.get("enabled", bool(mascot_cfg)))
+    if entry.get("type") == "endcards" and "enabled" not in ov:
+        enabled = False  # off by default on endcards (spec)
+    if "enabled" in ov:
+        enabled = bool(ov["enabled"])
+    stub = {
+        "enabled": enabled,
+        "character": mascot_cfg.get("character", "octopus"),
+        "position": ov.get("position", mascot_cfg.get("position", "bottom-right")),
+        "scale": mascot_cfg.get("scale", 1.0),
+    }
+    if not enabled:
+        return stub
+    t = entry.get("type")
+    if t == "before_after" and entry.get("layout", "sequential") == "sequential":
+        stub["before"] = ov.get("before", "panic")
+        stub["after"] = ov.get("after", "celebrate")
+    elif t == "before_after":  # side_by_side: one emotion, no half split (spec)
+        stub["emotion"] = ov.get("emotion", "point")
+    else:
+        stub["emotion"] = ov.get("emotion", MASCOT_TYPE_DEFAULTS.get(t, "idle"))
+    return stub
+
+
 # Built-in scene names → how to build them. Use any subset, any order, via
 # scenes.sequence. This is what gives full control over scene COUNT.
 BUILTINS = {
@@ -171,6 +212,8 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
         # Not applied to screen_recording (would mutate the user's source file).
         if sc.get("duration") is not None and t != "screen_recording":
             entry["duration"] = float(sc["duration"])
+        if sc.get("mascot") is not None:
+            entry["_mascot_override"] = sc["mascot"]
         plan.append(entry)
     return plan
 
@@ -208,6 +251,11 @@ def main():
 
     if len(plan) < 2:
         sys.exit(f"Need >=2 scenes for crossfades, got {len(plan)}")
+
+    mascot_cfg = cfg.get("mascot", {})
+    for entry in plan:
+        ov = entry.pop("_mascot_override", None)
+        entry["mascot_plan"] = mascot_stub(mascot_cfg, entry, ov)
 
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump({"arc": label, "scenes": plan}, f, indent=2)
