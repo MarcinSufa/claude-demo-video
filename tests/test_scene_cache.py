@@ -87,8 +87,10 @@ class TestMascotCacheLayers(unittest.TestCase):
                 f.write(b"fakevideo")
             with open(mascot, "w") as f:
                 f.write('{"name":"octopus"}')
-            t1 = [{"at": 0, "until": 5, "emotion": "idle"}]
-            t2 = [{"at": 0, "until": 5, "emotion": "panic"}]
+            t1 = {"stub": {"enabled": True}, "duration": 5.0,
+                  "timeline": [{"at": 0, "until": 5, "emotion": "idle"}]}
+            t2 = {"stub": {"enabled": True}, "duration": 5.0,
+                  "timeline": [{"at": 0, "until": 5, "emotion": "panic"}]}
             k1 = scene_cache.overlay_key(clip, mascot, t1)
             k2 = scene_cache.overlay_key(clip, mascot, t2)
             self.assertNotEqual(k1, k2)
@@ -99,7 +101,8 @@ class TestMascotCacheLayers(unittest.TestCase):
             mascot = os.path.join(d, "m.json")
             with open(mascot, "w") as f:
                 f.write("{}")
-            t = [{"at": 0, "until": 5, "emotion": "idle"}]
+            t = {"stub": {"enabled": True}, "duration": 5.0,
+                 "timeline": [{"at": 0, "until": 5, "emotion": "idle"}]}
             with open(clip, "wb") as f:
                 f.write(b"v1")
             k1 = scene_cache.overlay_key(clip, mascot, t)
