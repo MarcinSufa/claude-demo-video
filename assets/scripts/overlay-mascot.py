@@ -25,8 +25,58 @@ def anchor_xy(position, video_w, video_h, sprite_w, sprite_h):
     return x, y
 
 
-def build_overlay_cmd(capture, out, frames_dir, timeline, pos, fps, speedup):
-    """Full ffmpeg argv, or None when there is nothing to overlay."""
+OFFSCREEN_PAD_PX = 4          # how far below the frame "offscreen-bottom" sits
+DEFAULT_POSITION = "bottom-right"
+
+
+def resolve_anchors(timeline, video_w, video_h, sprite_w, sprite_h):
+    """Per-segment anchor points resolved from each segment's `position`.
+
+    Plain segments -> one (x, y). Move segments -> ((x0, y0), (x1, y1)) for the
+    `move.from` / `move.to` anchors. Pseudo-anchor "offscreen-bottom" keeps the
+    home x of the previous real position (or bottom-right) and drops below the
+    frame so the sprite slides out of view.
+    """
+    def named(pos, prev_pos):
+        if pos == "offscreen-bottom":
+            hx, _ = anchor_xy(prev_pos or DEFAULT_POSITION,
+                              video_w, video_h, sprite_w, sprite_h)
+            return hx, video_h + OFFSCREEN_PAD_PX
+        return anchor_xy(pos, video_w, video_h, sprite_w, sprite_h)
+
+    anchors, prev_pos = [], None
+    for seg in timeline:
+        pos = seg.get("position", DEFAULT_POSITION)
+        if "move" in seg:
+            frm, to = seg["move"]["from"], seg["move"]["to"]
+            anchors.append((named(frm, prev_pos), named(to, frm)))
+        else:
+            anchors.append(named(pos, prev_pos))
+        if pos != "offscreen-bottom":
+            prev_pos = pos
+    return anchors
+
+
+def _segment_xy(seg, anchor):
+    """The overlay x/y for one segment: ints for static segments, ffmpeg
+    `t`-expressions (quoted) for moves and emotion motion."""
+    at, dur = seg["at"], seg["until"] - seg["at"]
+    if "move" in seg:
+        (x0, y0), (x1, y1) = anchor
+        prog = f"clip((t-{at:.3f})/{dur:.3f},0,1)"
+        return (f"'{x0}+({x1}-{x0})*{prog}'", f"'{y0}+({y1}-{y0})*{prog}'")
+    x, y = anchor
+    if seg["emotion"] == "celebrate":   # bounce
+        return x, f"'{y}-18*abs(sin((t-{at:.3f})*4))'"
+    if seg["emotion"] == "panic":       # shake
+        return f"'{x}+4*sin((t-{at:.3f})*18)'", y
+    return x, y
+
+
+def build_overlay_cmd(capture, out, frames_dir, timeline, positions, fps, speedup):
+    """Full ffmpeg argv, or None when there is nothing to overlay.
+
+    `positions` is the per-segment anchor list from resolve_anchors()."""
     if not timeline:
         return None
     emotions = []
@@ -38,11 +88,11 @@ def build_overlay_cmd(capture, out, frames_dir, timeline, pos, fps, speedup):
     for emo in emotions:
         cmd += ["-stream_loop", "-1", "-framerate", str(eff_fps),
                 "-i", os.path.join(frames_dir, emo, "f_%03d.png").replace("\\", "/")]
-    x, y = pos
     parts, src = [], "[0:v]"
     for i, seg in enumerate(timeline):
         inp = emotions.index(seg["emotion"]) + 1
         label = f"[v{i}]" if i < len(timeline) - 1 else "[vout]"
+        x, y = _segment_xy(seg, positions[i])
         # shortest=1: the looped PNG inputs never EOF; end each stage with the
         # finite main chain or ffmpeg encodes forever.
         parts.append(
@@ -81,11 +131,14 @@ def main():
         sys.exit(0)  # nothing to do; caller handles the copy
     vw, vh = _probe_wh(args.capture)
     sw, sh = _probe_wh(os.path.join(args.frames_dir, tl[0]["emotion"], "f_001.png"))
-    pos = anchor_xy(stub.get("position", "bottom-right"), vw, vh, sw, sh)
+    fallback = stub.get("position", DEFAULT_POSITION)
+    for seg in tl:
+        seg.setdefault("position", fallback)
+    positions = resolve_anchors(tl, vw, vh, sw, sh)
     with open(os.path.join(args.frames_dir, "mascot-meta.json"), encoding="utf-8") as f:
         fps = json.load(f)["fps"]
     cmd = build_overlay_cmd(args.capture, args.out, args.frames_dir, tl,
-                            pos, fps, args.speedup)
+                            positions, fps, args.speedup)
     subprocess.check_call(cmd)
     print(f"  mascot overlaid -> {args.out}")
 
