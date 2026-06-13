@@ -45,6 +45,34 @@ def chrome_metrics(bar_h):
             "title_fs": max(10, round(bar_h * 0.42))}
 
 
+DOT_COLORS = [(0xff, 0x5f, 0x57), (0xfe, 0xbc, 0x2e), (0x7f, 0xbf, 0x7f)]  # red/amber/green
+
+
+def dots_rgba(metrics):
+    """Raw RGBA bytes for the three traffic-light dots on a transparent strip
+    (strip_w x strip_h). Filled circles with a 1px anti-aliased edge. No Pillow —
+    the bytes are piped to ffmpeg as rawvideo, like render-mascot.py."""
+    w, h = metrics["strip_w"], metrics["strip_h"]
+    d, gap = metrics["d"], metrics["gap"]
+    r = d / 2.0
+    buf = bytearray(w * h * 4)                      # zero-filled = transparent
+    for i, (cr, cg, cb) in enumerate(DOT_COLORS):
+        cx = i * (d + gap) + r
+        cy = r
+        for y in range(h):
+            for x in range(w):
+                dist = ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) ** 0.5
+                cov = max(0.0, min(1.0, r - dist + 0.5))   # coverage at the edge
+                a = int(round(cov * 255))
+                if a == 0:
+                    continue
+                o = (y * w + x) * 4
+                if a <= buf[o + 3]:
+                    continue
+                buf[o], buf[o + 1], buf[o + 2], buf[o + 3] = cr, cg, cb, a
+    return bytes(buf)
+
+
 def window_h(w_px, clip_cw, clip_ch, chrome):
     """A window's full canvas height: the clip scaled to width w_px, plus the title
     bar (BAR_H) when the window has chrome. focus_rect/camera/anchors use this."""

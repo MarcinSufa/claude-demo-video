@@ -140,5 +140,25 @@ class TestChromeHelpers(unittest.TestCase):
         self.assertEqual(md.window_h(1000, 1920, 1080, True), clip_only + md.BAR_H)
 
 
+class TestDotsRgba(unittest.TestCase):
+    def test_byte_length_matches_strip(self):
+        m = md.chrome_metrics(40)
+        buf = md.dots_rgba(m)
+        self.assertEqual(len(buf), m["strip_w"] * m["strip_h"] * 4)
+
+    def test_first_dot_centre_is_opaque_red(self):
+        m = md.chrome_metrics(40)
+        buf = md.dots_rgba(m)
+        cx, cy = m["d"] // 2, m["d"] // 2          # centre of dot 0
+        o = (cy * m["strip_w"] + cx) * 4
+        self.assertEqual((buf[o], buf[o + 1], buf[o + 2]), (0xff, 0x5f, 0x57))
+        self.assertGreater(buf[o + 3], 250)         # opaque
+
+    def test_corner_is_transparent(self):
+        m = md.chrome_metrics(40)
+        buf = md.dots_rgba(m)
+        self.assertEqual(buf[3], 0)                  # top-left pixel alpha == 0
+
+
 if __name__ == "__main__":
     unittest.main()
