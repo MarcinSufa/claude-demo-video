@@ -55,7 +55,7 @@ python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyam
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
@@ -96,6 +96,14 @@ if [ "$MASCOT_ENABLED" = "1" ]; then
     fi
   fi
   if [ -f mascot.json ]; then
+    # Optional procedural shading (mascot.shade: true) — adds rim light + shadow
+    # + eye catch-lights to a flat character, no art rework. In-place, reproducible.
+    MASCOT_SHADE=$(python -c "import json;print(1 if json.load(open('config.json')).get('mascot',{}).get('shade') else 0)")
+    if [ "$MASCOT_SHADE" = "1" ]; then
+      python shade_sprite.py mascot.json mascot.shaded.json && mv -f mascot.shaded.json mascot.json \
+        && echo "  mascot: procedural shading applied" \
+        || echo "WARNING: mascot shading failed - using flat mascot"
+    fi
     MASCOT_SCALE=$(python -c "import json;s=json.load(open('config.json')).get('mascot',{}).get('scale');print(s if s else '')")
     python render-mascot.py mascot.json mascot ${MASCOT_SCALE:+--scale "$MASCOT_SCALE"} \
       || { echo "WARNING: mascot render failed - building mascot-less"; rm -rf mascot mascot.json; }
