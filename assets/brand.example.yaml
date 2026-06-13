@@ -251,7 +251,8 @@ end_cards:
 #   enabled: true
 #   position: bottom-right  # bottom-left | top-right | top-left
 #   scale: 1.0
-#   shade: true             # procedural depth (shader v2): hue-shifted ramp —
+#   shade: true             # CHOICE: flat vs shaded. Omit or false = flat fills (default);
+#                           # true = procedural depth (shader v2): hue-shifted ramp —
 #                           # warm highlight rim + cool two-step shadow + boundary
 #                           # dither + eye catch-lights. Flat fills look painted,
 #                           # not just dimmed. No art rework; works on any flat

@@ -344,8 +344,13 @@ mascot:
   enabled: true
   position: bottom-right  # bottom-left | top-right | top-left
   scale: 1.0
-  shade: true             # optional procedural depth (see below)
+  shade: true             # CHOICE: true = painted depth · false/omit = flat (default). See below.
 ```
+
+**Shaded or flat — your choice.** The `shade` flag is the single switch between
+the two looks: leave it off (or `false`) for the original flat fills, set `true`
+for procedural depth. Default is flat, so existing builds are unchanged; flipping
+one line lets you compare.
 
 **Procedural shading (`shade: true`).** A flat character gets dimensionality at
 build time with no art rework: `shade_sprite.py` (shader v2) adds a *hue-shifted
