@@ -87,7 +87,7 @@ scenes:
       duration: 6
       canvas: { width: 2560, height: 1440, backdrop: "color=c=0x0a0705" }
       windows:
-        - { id: a, source: "footage/da.mp4", x: 120, y: 300, w: 1000 }
+        - { id: a, source: "footage/da.mp4", x: 120, y: 300, w: 1000, chrome: true, title: "worker" }
         - { id: b, source: "footage/db.mp4", x: 1440, y: 600, w: 1000 }
       camera:
         - { focus: a, zoom: 1.7, hold: 2.5 }

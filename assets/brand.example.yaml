@@ -200,7 +200,7 @@ scenes:
   #     duration: 14                     # optional — else = the camera tour's length
   #     canvas: { width: 2560, height: 1440, backdrop: "color=c=0x0a0705" }  # 16:9; backdrop: lavfi color= OR an image path
   #     windows:                         # each: id, top-left (x,y) + width (w) on the canvas; height follows the clip aspect
-  #       - { id: worker,   source: "footage/worker.mp4",        x: 120,  y: 300, w: 1000 }
+  #       - { id: worker,   source: "footage/worker.mp4",        x: 120,  y: 300, w: 1000, chrome: true }  # chrome: true draws a macOS title bar (dots + title) around the window
   #       - { id: reviewer, url: "http://localhost:3000/review", x: 1440, y: 600, w: 1000, actions: [{ wait: 1.0 }] }  # live capture
   #     camera:                          # stops: focus a window id | "all" (bbox); zoom>1 tightens; hold secs; transition eases IN
   #       - { focus: all,      zoom: 1.0, hold: 1.5 }

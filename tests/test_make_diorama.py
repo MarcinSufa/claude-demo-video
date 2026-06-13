@@ -93,20 +93,112 @@ class TestDioramaTimeline(unittest.TestCase):
 class TestCanvasPositions(unittest.TestCase):
     WINS = [{"id": "a", "x": 100, "y": 200, "w": 1280, "h": 720},
             {"id": "b", "x": 2300, "y": 1100, "w": 1280, "h": 720}]
+    CANVAS = {"width": 3840, "height": 2160}
 
     def test_static_segment_uses_window_anchor(self):
-        tl = [{"at": 0, "until": 3, "emotion": "idle",
-               "at_window": "a", "anchor": "top"}]
-        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140))
+        tl = [{"at": 0, "until": 3, "emotion": "idle", "at_window": "a", "anchor": "top"}]
+        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140), self.CANVAS)
         self.assertEqual(pos[0], (100 + (1280 - 160) // 2, 200 - 140))
 
     def test_move_segment_resolves_both_windows(self):
         tl = [{"at": 0, "until": 0.8, "emotion": "walk",
                "move": {"from_window": "a", "from_anchor": "top",
                         "to_window": "b", "to_anchor": "beside"}}]
-        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140))
+        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140), self.CANVAS)
         self.assertEqual(pos[0][0], (100 + (1280 - 160) // 2, 200 - 140))
         self.assertEqual(pos[0][1], (2300 + 1280 + 8, 1100 + (720 - 140) // 2))
+
+    def test_anchor_clamped_into_canvas(self):
+        # window 'b' is at the right/bottom edge; a 'beside' anchor would land the
+        # sprite off-canvas — it must clamp to within [0, canvas - sprite]
+        small = {"width": 3300, "height": 1300}
+        tl = [{"at": 0, "until": 3, "emotion": "point", "at_window": "b", "anchor": "beside"}]
+        x, y = md.resolve_canvas_positions(tl, self.WINS, (160, 140), small)[0]
+        self.assertLessEqual(x + 160, small["width"])
+        self.assertLessEqual(y + 140, small["height"])
+        self.assertGreaterEqual(x, 0)
+        self.assertGreaterEqual(y, 0)
+
+
+class TestChromeHelpers(unittest.TestCase):
+    def test_ffcolor_normalizes_hex(self):
+        self.assertEqual(md._ffcolor("#1e1714"), "0x1e1714")
+        self.assertEqual(md._ffcolor("2c2c32"), "0x2c2c32")
+        self.assertEqual(md._ffcolor("0xabcdef"), "0xabcdef")
+
+    def test_chrome_metrics_scale_from_bar_height(self):
+        m = md.chrome_metrics(40)
+        self.assertEqual(m["strip_w"], 3 * m["d"] + 2 * m["gap"])
+        self.assertEqual(m["strip_h"], m["d"])
+        self.assertGreater(m["title_x"], m["pad"] + m["strip_w"])  # title right of dots
+        for k in ("d", "gap", "pad", "title_x", "title_fs"):
+            self.assertGreater(m[k], 0)
+
+    def test_window_h_adds_bar_only_for_chrome(self):
+        clip_only = round(1000 * 1080 / 1920)
+        self.assertEqual(md.window_h(1000, 1920, 1080, False), clip_only)
+        self.assertEqual(md.window_h(1000, 1920, 1080, True), clip_only + md.BAR_H)
+
+
+class TestDotsRgba(unittest.TestCase):
+    def test_byte_length_matches_strip(self):
+        m = md.chrome_metrics(40)
+        buf = md.dots_rgba(m)
+        self.assertEqual(len(buf), m["strip_w"] * m["strip_h"] * 4)
+
+    def test_first_dot_centre_is_opaque_red(self):
+        m = md.chrome_metrics(40)
+        buf = md.dots_rgba(m)
+        cx, cy = m["d"] // 2, m["d"] // 2          # centre of dot 0
+        o = (cy * m["strip_w"] + cx) * 4
+        self.assertEqual((buf[o], buf[o + 1], buf[o + 2]), (0xff, 0x5f, 0x57))
+        self.assertGreater(buf[o + 3], 250)         # opaque
+
+    def test_corner_is_transparent(self):
+        m = md.chrome_metrics(40)
+        buf = md.dots_rgba(m)
+        self.assertEqual(buf[3], 0)                  # top-left pixel alpha == 0
+
+
+class TestChromeFilter(unittest.TestCase):
+    WINS = [{"id": "a", "x": 100, "y": 200, "w": 900, "chrome": True, "title_file": "ta.txt"},
+            {"id": "b", "x": 1500, "y": 200, "w": 900}]   # b: no chrome
+    STYLE = {"bar_bg": "0x17171a", "rule": "0x2c2c32", "fg": "0xf4efe3"}
+
+    def test_draws_bar_dots_title_for_chrome_window_only(self):
+        f = md.chrome_filter(self.WINS, in_label="canvas", out_label="vout",
+                             dots_index=3, style=self.STYLE, font="C:/f.ttf")
+        self.assertIn(f"drawbox=x=100:y=200:w=900:h={md.BAR_H}", f)   # bar at window a
+        self.assertIn("0x17171a", f)                                  # bar bg colour
+        self.assertIn("overlay=", f)                                  # dots overlay
+        self.assertIn("ta.txt", f.replace("\\", ""))                 # title textfile
+        self.assertEqual(f.count("drawbox=x=100:y=200:w=900"), 1)     # exactly one bar (window a)
+        self.assertNotIn("x=1500", f)                                 # window b (no chrome, x=1500) untouched
+
+    def test_passthrough_when_no_chrome_windows(self):
+        plain = [{"id": "b", "x": 0, "y": 0, "w": 900}]
+        f = md.chrome_filter(plain, in_label="canvas", out_label="vout",
+                             dots_index=None, style=None, font=None)
+        self.assertEqual(f, "[canvas]null[vout]")       # nothing to draw
+
+    def test_dots_input_split_per_chrome_window(self):
+        wins = [dict(self.WINS[0]), {"id": "c", "x": 50, "y": 50, "w": 800,
+                                     "chrome": True, "title_file": "tc.txt"}]
+        f = md.chrome_filter(wins, in_label="canvas", out_label="vout",
+                             dots_index=3, style=self.STYLE, font=None)
+        self.assertIn("[3:v]split=2", f)                # one dots copy per chrome window
+
+
+class TestCanvasClipOffset(unittest.TestCase):
+    def test_chrome_window_clip_overlaid_below_the_bar(self):
+        wins = [{"id": "a", "x": 100, "y": 200, "w": 900, "chrome": True}]
+        f = md.build_canvas_filter(wins, {"width": 2560, "height": 1440})
+        self.assertIn(f"overlay=100:{200 + md.BAR_H}", f)    # clip pushed down by BAR_H
+
+    def test_plain_window_clip_overlaid_at_origin(self):
+        wins = [{"id": "a", "x": 100, "y": 200, "w": 900}]
+        f = md.build_canvas_filter(wins, {"width": 2560, "height": 1440})
+        self.assertIn("overlay=100:200", f)
 
 
 if __name__ == "__main__":

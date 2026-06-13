@@ -12,6 +12,7 @@ builders; diorama_layout.py holds the geometry. The graph is verified end-to-end
 by tests/smoke_build.sh's diorama tier.
 """
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -20,20 +21,112 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from diorama_layout import (  # noqa: E402
-    camera_duration, camera_timeline, viewport_at, window_anchor)
+    assert_canvas_16_9, camera_duration, camera_timeline, viewport_at, window_anchor)
+
+BAR_H = 40   # title-bar height in canvas px (constant — real title bars are ~fixed)
+
+
+def _ffcolor(c):
+    """'#1e1714' / '1e1714' / '0x1e1714' -> '0x1e1714' for ffmpeg drawbox/drawtext."""
+    c = str(c)
+    if c.startswith("0x"):
+        return c
+    return "0x" + c.lstrip("#")
+
+
+def chrome_metrics(bar_h):
+    """Derived chrome sizes from the bar height (so they scale together and are
+    unit-testable): dot diameter/gap, left pad, dots-strip size, title x + font."""
+    d = max(8, round(bar_h * 0.30))
+    gap = max(4, round(d * 0.6))
+    pad = round(bar_h * 0.5)
+    strip_w = 3 * d + 2 * gap
+    return {"d": d, "gap": gap, "pad": pad, "strip_w": strip_w, "strip_h": d,
+            "title_x": pad + strip_w + round(bar_h * 0.5),
+            "title_fs": max(10, round(bar_h * 0.42))}
+
+
+DOT_COLORS = [(0xff, 0x5f, 0x57), (0xfe, 0xbc, 0x2e), (0x7f, 0xbf, 0x7f)]  # red/amber/green
+
+
+def dots_rgba(metrics):
+    """Raw RGBA bytes for the three traffic-light dots on a transparent strip
+    (strip_w x strip_h). Filled circles with a 1px anti-aliased edge. No Pillow —
+    the bytes are piped to ffmpeg as rawvideo, like render-mascot.py."""
+    w, h = metrics["strip_w"], metrics["strip_h"]
+    d, gap = metrics["d"], metrics["gap"]
+    r = d / 2.0
+    buf = bytearray(w * h * 4)                      # zero-filled = transparent
+    for i, (cr, cg, cb) in enumerate(DOT_COLORS):
+        cx = i * (d + gap) + r
+        cy = r
+        for y in range(h):
+            for x in range(w):
+                dist = ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) ** 0.5
+                cov = max(0.0, min(1.0, r - dist + 0.5))   # coverage at the edge
+                a = int(round(cov * 255))
+                if a == 0:
+                    continue
+                o = (y * w + x) * 4
+                if a <= buf[o + 3]:
+                    continue
+                buf[o], buf[o + 1], buf[o + 2], buf[o + 3] = cr, cg, cb, a
+    return bytes(buf)
+
+
+def window_h(w_px, clip_cw, clip_ch, chrome):
+    """A window's full canvas height: the clip scaled to width w_px, plus the title
+    bar (BAR_H) when the window has chrome. focus_rect/camera/anchors use this."""
+    return round(w_px * clip_ch / clip_cw) + (BAR_H if chrome else 0)
 
 
 def build_canvas_filter(windows, canvas):
     """Backdrop ([0:v]) scaled to canvas, then each window clip ([i:v], i>=1)
-    scaled to its width and overlaid at (x, y). Returns the filter_complex up to
-    label [canvas]."""
+    scaled to its width and overlaid at (x, y) — chrome windows' clips are pushed
+    down by BAR_H to leave room for the title bar drawn later. Ends at [canvas]."""
     parts = [f"[0:v]scale={canvas['width']}:{canvas['height']},setsar=1[bg]"]
     src = "[bg]"
     for i, w in enumerate(windows, 1):
         parts.append(f"[{i}:v]scale={w['w']}:-2,setsar=1[w{i}]")
         label = "[canvas]" if i == len(windows) else f"[c{i}]"
-        parts.append(f"{src}[w{i}]overlay={w['x']}:{w['y']}{label}")
+        wy = w["y"] + (BAR_H if w.get("chrome") else 0)
+        parts.append(f"{src}[w{i}]overlay={w['x']}:{wy}{label}")
         src = f"[c{i}]"
+    return ";".join(parts)
+
+
+# make-before-after helpers (find_font / _esc_path / ascii_label), loaded at MODULE
+# level so module-level chrome_filter can escape paths without re-importing (main()
+# reuses find_font / ascii_label too).
+_mba_spec = importlib.util.spec_from_file_location(
+    "make_before_after", os.path.join(os.path.dirname(os.path.abspath(__file__)), "make-before-after.py"))
+_mba = importlib.util.module_from_spec(_mba_spec); _mba_spec.loader.exec_module(_mba)
+
+
+def chrome_filter(windows, in_label, out_label, dots_index, style, font):
+    """Draw the title bar (drawbox), traffic-light dots (overlay of input
+    [dots_index]) and title (drawtext, textfile) on `in_label` for each chrome
+    window, producing `out_label`. A no-op `null` when no window has chrome."""
+    chrome = [w for w in windows if w.get("chrome")]
+    if not chrome:
+        return f"[{in_label}]null[{out_label}]"
+    m = chrome_metrics(BAR_H)
+    fontclause = f"fontfile='{_mba._esc_path(font)}':" if font else ""
+    parts = [f"[{dots_index}:v]split={len(chrome)}" + "".join(f"[dots{i}]" for i in range(len(chrome)))]
+    src = in_label
+    for i, w in enumerate(chrome):
+        x, y, ww = w["x"], w["y"], w["w"]
+        nxt = out_label if i == len(chrome) - 1 else f"chr{i}"
+        bar = (f"drawbox=x={x}:y={y}:w={ww}:h={BAR_H}:color={style['bar_bg']}:t=fill,"
+               f"drawbox=x={x}:y={y + BAR_H - 2}:w={ww}:h=2:color={style['rule']}:t=fill")
+        dots_x, dots_y = x + m["pad"], y + (BAR_H - m["strip_h"]) // 2
+        title = (f"drawtext={fontclause}textfile='{_mba._esc_path(w['title_file'])}':"
+                 f"x={x + m['title_x']}:y={y}+({BAR_H}-text_h)/2:"
+                 f"fontsize={m['title_fs']}:fontcolor={style['fg']}")
+        parts.append(f"[{src}]{bar}[chrb{i}]")
+        parts.append(f"[chrb{i}][dots{i}]overlay={dots_x}:{dots_y}[chrd{i}]")
+        parts.append(f"[chrd{i}]{title}[{nxt}]")
+        src = nxt
     return ";".join(parts)
 
 
@@ -101,20 +194,27 @@ def diorama_timeline(keyframes, duration):
     return segs
 
 
-def resolve_canvas_positions(timeline, windows, sprite_wh):
-    """Per-segment canvas anchors for the mascot. Static segs carry at_window+anchor;
-    move segs carry move.{from,to}_{window,anchor}. Returns the positions list
-    overlay-mascot.build_overlay_cmd expects."""
+def _clamp_xy(xy, sprite_wh, canvas):
+    """Keep a sprite anchor inside the canvas: x in [0, W-sw], y in [0, H-sh]."""
+    x, y = xy
+    sw, sh = sprite_wh
+    return (min(max(0, x), canvas["width"] - sw),
+            min(max(0, y), canvas["height"] - sh))
+
+
+def resolve_canvas_positions(timeline, windows, sprite_wh, canvas):
+    """Per-segment canvas anchors for the mascot, clamped into the canvas. Static
+    segs carry at_window+anchor; move segs carry move.{from,to}_{window,anchor}."""
     by_id = {w["id"]: w for w in windows}
     sw, sh = sprite_wh
     out = []
     for seg in timeline:
         if "move" in seg:
             mv = seg["move"]
-            out.append((window_anchor(by_id[mv["from_window"]], mv["from_anchor"], sw, sh),
-                        window_anchor(by_id[mv["to_window"]], mv["to_anchor"], sw, sh)))
+            out.append((_clamp_xy(window_anchor(by_id[mv["from_window"]], mv["from_anchor"], sw, sh), sprite_wh, canvas),
+                        _clamp_xy(window_anchor(by_id[mv["to_window"]], mv["to_anchor"], sw, sh), sprite_wh, canvas)))
         else:
-            out.append(window_anchor(by_id[seg["at_window"]], seg["anchor"], sw, sh))
+            out.append(_clamp_xy(window_anchor(by_id[seg["at_window"]], seg["anchor"], sw, sh), sprite_wh, canvas))
     return out
 
 
@@ -131,6 +231,7 @@ def main():
     with open(a.plan_json, encoding="utf-8") as f:
         plan = json.load(f)
     canvas, windows = plan["canvas"], plan["windows"]
+    assert_canvas_16_9(canvas)          # fail loud, not silent zoompan distortion
     # Duration is the camera tour's length unless the scene pins one explicitly.
     dur = plan["duration"] if plan.get("duration") is not None else camera_duration(plan["camera"])
     dur, fps = float(dur), int(plan.get("fps", 30))
@@ -154,14 +255,48 @@ def main():
     # w["clip"] directly would trim/pad the user's SOURCE footage — copy first.
     for i, w in enumerate(windows):
         cw, ch = (int(v) for v in _probe(w["clip"], "stream=width,height").split(","))
-        w["h"] = round(w["w"] * ch / cw)
+        w["h"] = window_h(w["w"], cw, ch, w.get("chrome"))   # incl. BAR_H for chrome windows
         win_clip = os.path.join(workdir, f".diorama-win-{i}.mp4")
         shutil.copyfile(w["clip"], win_clip)
         normmod.main(["normalize-clip.py", win_clip, str(dur)])  # pin the COPY to DUR
         inputs += ["-i", win_clip]
+    chrome_wins = [w for w in windows if w.get("chrome")]
+    style, font, dots_index = None, None, None
+    if chrome_wins:
+        cs = plan.get("chrome_style")
+        if not cs:                                  # hand-built plan with chrome but no style
+            sys.exit("make-diorama: chrome windows require a 'chrome_style' block in the plan")
+        style = {"bar_bg": _ffcolor(cs["bar_bg"]), "rule": _ffcolor(cs["rule"]),
+                 "fg": _ffcolor(cs["fg"])}
+        font = _mba.find_font()
+        if font is None:                            # drawtext title can't render without a font
+            sys.exit("make-diorama: chrome titles need a system .ttf (none found by find_font)")
+        for w in chrome_wins:                       # one UTF-8 textfile per chrome title
+            tf = os.path.join(workdir, f".diorama-title-{w['id']}.txt")
+            with open(tf, "w", encoding="utf-8", newline="") as f:
+                f.write(_mba.ascii_label(str(w.get("title", w["id"]))))
+            w["title_file"] = tf
+        dots_png = os.path.join(workdir, ".diorama-dots.png")
+        m = chrome_metrics(BAR_H)
+        buf = dots_rgba(m)
+        proc = subprocess.Popen(
+            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{m['strip_w']}x{m['strip_h']}",
+             "-i", "-", "-frames:v", "1", dots_png], stdin=subprocess.PIPE)
+        proc.communicate(buf)
+        if proc.returncode != 0:
+            sys.exit("make-diorama: dots PNG generation failed")
+        dots_index = len(windows) + 1               # [0]=backdrop, [1..N]=clips, [N+1]=dots
+        inputs += ["-loop", "1", "-i", dots_png]    # -loop: hold the single dots frame for the
+        #                                             whole scene (older ffmpeg overlay may drop it)
     canvas_mp4 = os.path.join(workdir, ".diorama-canvas.mp4")
-    fc = build_canvas_filter(windows, canvas) + \
-        f";[canvas]trim=duration={dur:.3f},setpts=PTS-STARTPTS[v]"
+    fc = build_canvas_filter(windows, canvas)
+    if chrome_wins:
+        fc += ";" + chrome_filter(windows, "canvas", "canvasc", dots_index, style, font)
+        last = "canvasc"
+    else:
+        last = "canvas"
+    fc += f";[{last}]trim=duration={dur:.3f},setpts=PTS-STARTPTS[v]"
     subprocess.check_call(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs,
         "-filter_complex", fc, "-map", "[v]", "-t", f"{dur:.3f}", "-r", str(fps),
         "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", canvas_mp4])
@@ -177,7 +312,7 @@ def main():
         sprite_wh = tuple(int(v) for v in _probe(
             os.path.join(m["frames_dir"], "idle", "f_001.png"), "stream=width,height").split(","))
         timeline = diorama_timeline(m["keyframes"], dur)            # keyframes -> segments+walks
-        positions = resolve_canvas_positions(timeline, windows, sprite_wh)
+        positions = resolve_canvas_positions(timeline, windows, sprite_wh, canvas)
         cmd = ovl.build_overlay_cmd(canvas_mp4, os.path.join(workdir, ".diorama-m.mp4"),
             m["frames_dir"], timeline, positions, m["fps"], 1.0)
         if cmd:
