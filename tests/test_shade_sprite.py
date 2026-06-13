@@ -226,3 +226,30 @@ class TestShade(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRosterAndIdempotency(unittest.TestCase):
+    def _validator(self):
+        md = importlib.util.spec_from_file_location(
+            "mascot_data", os.path.join(SCRIPTS, "mascot_data.py"))
+        mod = importlib.util.module_from_spec(md)
+        md.loader.exec_module(mod)
+        return mod
+
+    def test_all_roster_mascots_shade_and_validate(self):
+        import glob
+        import json
+        validate = self._validator().validate_mascot
+        files = glob.glob(os.path.join(SCRIPTS, "..", "mascots", "*.json"))
+        self.assertTrue(files, "no roster mascots found")
+        for fp in files:
+            with open(fp, encoding="utf-8") as f:
+                m = json.load(f)
+            out = ss.shade_mascot(m)
+            validate(out)  # shaded roster char must still validate
+
+    def test_idempotent_reshade_is_noop(self):
+        once = ss.shade_mascot(FLAT)
+        twice = ss.shade_mascot(once)
+        self.assertEqual(twice["palette"], once["palette"])  # no -shaded-shaded, no extra slots
+        self.assertFalse(once["name"].endswith("-shaded-shaded"))

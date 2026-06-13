@@ -114,6 +114,11 @@ def shade_mascot(m, body="body", belly="belly", eyes="eyes", outline="outline",
     """
     if body not in m.get("palette", {}):
         raise ValueError(f"shade_sprite: mascot has no '{body}' palette slot")
+    # Idempotent: a mascot that already carries shading slots passes through
+    # unchanged, so re-running (e.g. a saved shaded mascot.json + shade:true)
+    # never double-shades or stacks "-shaded-shaded" names.
+    if any(s in m.get("palette", {}) for s in ("hi", "shade", "shade2", "glow")):
+        return dict(m)
     legend = dict(m["legend"])
     palette = dict(m["palette"])
 
@@ -196,7 +201,8 @@ def shade_mascot(m, body="body", belly="belly", eyes="eyes", outline="outline",
         return ["".join(row) for row in out]
 
     new = dict(m)
-    new["name"] = m.get("name", "mascot") + "-shaded"
+    base_name = m.get("name", "mascot")
+    new["name"] = base_name if base_name.endswith("-shaded") else base_name + "-shaded"
     new["legend"] = legend
     new["palette"] = palette
     new["animations"] = {
@@ -221,8 +227,8 @@ def main():
     try:
         out = shade_mascot(m, a.body, a.belly, a.eyes, a.outline,
                            dither=not a.no_dither)
-    except ValueError as e:
-        sys.exit(str(e))
+    except (ValueError, KeyError) as e:
+        sys.exit(f"shade_sprite: {e}")
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=1)
     print(f"  mascot shaded -> {a.out} (+hi/shade/shade2/glow)")
