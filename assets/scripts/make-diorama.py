@@ -255,14 +255,43 @@ def main():
     # w["clip"] directly would trim/pad the user's SOURCE footage — copy first.
     for i, w in enumerate(windows):
         cw, ch = (int(v) for v in _probe(w["clip"], "stream=width,height").split(","))
-        w["h"] = round(w["w"] * ch / cw)
+        w["h"] = window_h(w["w"], cw, ch, w.get("chrome"))   # incl. BAR_H for chrome windows
         win_clip = os.path.join(workdir, f".diorama-win-{i}.mp4")
         shutil.copyfile(w["clip"], win_clip)
         normmod.main(["normalize-clip.py", win_clip, str(dur)])  # pin the COPY to DUR
         inputs += ["-i", win_clip]
+    chrome_wins = [w for w in windows if w.get("chrome")]
+    style, font, dots_index = None, None, None
+    if chrome_wins:
+        cs = plan["chrome_style"]
+        style = {"bar_bg": _ffcolor(cs["bar_bg"]), "rule": _ffcolor(cs["rule"]),
+                 "fg": _ffcolor(cs["fg"])}
+        font = _mba.find_font()
+        for w in chrome_wins:                       # one UTF-8 textfile per chrome title
+            tf = os.path.join(workdir, f".diorama-title-{w['id']}.txt")
+            with open(tf, "w", encoding="utf-8", newline="") as f:
+                f.write(_mba.ascii_label(str(w.get("title", w["id"]))))
+            w["title_file"] = tf
+        dots_png = os.path.join(workdir, ".diorama-dots.png")
+        m = chrome_metrics(BAR_H)
+        buf = dots_rgba(m)
+        proc = subprocess.Popen(
+            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{m['strip_w']}x{m['strip_h']}",
+             "-i", "-", "-frames:v", "1", dots_png], stdin=subprocess.PIPE)
+        proc.communicate(buf)
+        if proc.returncode != 0:
+            sys.exit("make-diorama: dots PNG generation failed")
+        dots_index = len(windows) + 1               # [0]=backdrop, [1..N]=clips, [N+1]=dots
+        inputs += ["-i", dots_png]
     canvas_mp4 = os.path.join(workdir, ".diorama-canvas.mp4")
-    fc = build_canvas_filter(windows, canvas) + \
-        f";[canvas]trim=duration={dur:.3f},setpts=PTS-STARTPTS[v]"
+    fc = build_canvas_filter(windows, canvas)
+    if chrome_wins:
+        fc += ";" + chrome_filter(windows, "canvas", "canvasc", dots_index, style, font)
+        last = "canvasc"
+    else:
+        last = "canvas"
+    fc += f";[{last}]trim=duration={dur:.3f},setpts=PTS-STARTPTS[v]"
     subprocess.check_call(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs,
         "-filter_complex", fc, "-map", "[v]", "-t", f"{dur:.3f}", "-r", str(fps),
         "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", canvas_mp4])
