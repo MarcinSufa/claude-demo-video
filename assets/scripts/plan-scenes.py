@@ -265,6 +265,8 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                 entry["windows"].append(w)
             kf = sorted(sc.get("mascot", {}).get("keyframes", []), key=lambda k: k["at"])
             entry["mascot"] = {"keyframes": kf} if kf else None
+            if any(w.get("chrome") for w in entry["windows"]):   # chrome bar colours, in the
+                entry["chrome_style"] = (ctx or {}).get("chrome_style", {})  # cached entry
         else:
             sys.exit(f"Unknown custom scene type: {t}")
         # P0-3: optional explicit duration — build-scenes.sh normalizes the clip to
@@ -296,7 +298,13 @@ def main():
     arc = scenes.get("arc", "memory-product-default")
 
     # Context threaded into scene specs (e.g. palette bg for html_mockup flash guard).
-    ctx = {"bg": cfg.get("subs", {}).get("palette_bg", "#0a0705")}
+    subs = cfg.get("subs", {})
+    ctx = {"bg": subs.get("palette_bg", "#0a0705"),
+           # diorama window-chrome bar colours — carried into the diorama entry so a
+           # palette change is part of the scene-cache fingerprint (busts a stale chrome clip).
+           "chrome_style": {"bar_bg": subs.get("palette_end_card_bg", "#17171a"),
+                            "rule": subs.get("palette_rule", "#2c2c32"),
+                            "fg": subs.get("palette_fg", "#f4efe3")}}
 
     # Resolution priority (most explicit wins):
     #   1. scenes.sequence  — exact ordered list, full scene-COUNT control

@@ -68,5 +68,24 @@ class TestDioramaMascotSuppressed(unittest.TestCase):
         self.assertNotIn("keyframes", stub)   # overlay keyframes must not leak through
 
 
+class TestDioramaChromeStyleInEntry(unittest.TestCase):
+    SCENE = {"type": "diorama", "canvas": {"width": 2560, "height": 1440},
+             "camera": [{"focus": "a", "hold": 2}, {"focus": "a", "hold": 2}],
+             "windows": [{"id": "a", "source": "footage/a.mp4", "x": 1, "y": 2, "w": 900, "chrome": True}]}
+    CTX = {"chrome_style": {"bar_bg": "#17171a", "rule": "#2c2c32", "fg": "#f4efe3"}}
+
+    def test_chrome_window_carries_chrome_style_into_entry(self):
+        # the chrome bar colours must land in the scene entry so the scene cache
+        # (which hashes the entry) busts a stale chrome clip when the palette changes
+        e = ps.custom_arc([self.SCENE], ctx=self.CTX)[0]
+        self.assertEqual(e["chrome_style"], self.CTX["chrome_style"])
+
+    def test_no_chrome_window_no_chrome_style(self):
+        plain = {**self.SCENE,
+                 "windows": [{"id": "a", "source": "footage/a.mp4", "x": 1, "y": 2, "w": 900}]}
+        e = ps.custom_arc([plain], ctx=self.CTX)[0]
+        self.assertNotIn("chrome_style", e)
+
+
 if __name__ == "__main__":
     unittest.main()

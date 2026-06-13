@@ -263,10 +263,14 @@ def main():
     chrome_wins = [w for w in windows if w.get("chrome")]
     style, font, dots_index = None, None, None
     if chrome_wins:
-        cs = plan["chrome_style"]
+        cs = plan.get("chrome_style")
+        if not cs:                                  # hand-built plan with chrome but no style
+            sys.exit("make-diorama: chrome windows require a 'chrome_style' block in the plan")
         style = {"bar_bg": _ffcolor(cs["bar_bg"]), "rule": _ffcolor(cs["rule"]),
                  "fg": _ffcolor(cs["fg"])}
         font = _mba.find_font()
+        if font is None:                            # drawtext title can't render without a font
+            sys.exit("make-diorama: chrome titles need a system .ttf (none found by find_font)")
         for w in chrome_wins:                       # one UTF-8 textfile per chrome title
             tf = os.path.join(workdir, f".diorama-title-{w['id']}.txt")
             with open(tf, "w", encoding="utf-8", newline="") as f:
@@ -283,7 +287,8 @@ def main():
         if proc.returncode != 0:
             sys.exit("make-diorama: dots PNG generation failed")
         dots_index = len(windows) + 1               # [0]=backdrop, [1..N]=clips, [N+1]=dots
-        inputs += ["-i", dots_png]
+        inputs += ["-loop", "1", "-i", dots_png]    # -loop: hold the single dots frame for the
+        #                                             whole scene (older ffmpeg overlay may drop it)
     canvas_mp4 = os.path.join(workdir, ".diorama-canvas.mp4")
     fc = build_canvas_filter(windows, canvas)
     if chrome_wins:

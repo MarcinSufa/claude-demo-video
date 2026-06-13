@@ -122,10 +122,9 @@ for w in e["windows"]:
         clips[w["id"]] = cap["output"]
     else:
         clips[w["id"]] = w["source"]
-pal = json.load(open("config.json")).get("palette", {})   # raw brand palette (apply-brand emits it)
-style = {"bar_bg": pal.get("end_card_bg", "#17171a"),
-         "rule":   pal.get("rule", "#2c2c32"),
-         "fg":     pal.get("fg", "#f4efe3")}               # raw #RRGGBB; make-diorama _ffcolor's it
+# chrome bar colours come from the scene entry (plan-scenes put them there from the
+# palette, so a palette change is part of the cache fingerprint); raw #RRGGBB.
+style = e.get("chrome_style") or {"bar_bg": "#17171a", "rule": "#2c2c32", "fg": "#f4efe3"}
 # Mascot RUNTIME enrichment (filesystem-derived) stays here, not in pure build_plan:
 mascot = None
 if e.get("mascot") and os.path.isdir("mascot"):
