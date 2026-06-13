@@ -52,6 +52,20 @@ step 4 "Verifying prerequisites"
 for cmd in ffmpeg ffprobe python; do command -v $cmd >/dev/null || { echo "Missing: $cmd"; exit 1; }; done
 python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyaml"; exit 1; }
 
+# Vendored-script drift guard (after the python prereq so a missing interpreter
+# reports "Missing: python", not a misleading drift warning). A project keeps a
+# COPY of these scripts; a partial re-sync silently mixes old + new and fails in
+# confusing ways. Warn by default; DEMO_STRICT_SCRIPTS=1 makes drift a hard error.
+if [ -f "$SKILL_SCRIPTS/scripts_fingerprint.py" ]; then
+  if ! python "$SKILL_SCRIPTS/scripts_fingerprint.py" --check "$SKILL_SCRIPTS"; then
+    if [ "${DEMO_STRICT_SCRIPTS:-0}" = "1" ]; then
+      echo "ERROR: demo-video scripts are out of sync (DEMO_STRICT_SCRIPTS=1). Re-copy assets/scripts/*."; exit 1
+    fi
+    echo "WARNING: demo-video scripts are out of sync (see above). The build may"
+    echo "         misbehave; re-copy assets/scripts/* from the skill to fix."
+  fi
+fi
+
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
