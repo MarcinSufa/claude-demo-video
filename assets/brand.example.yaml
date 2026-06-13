@@ -174,6 +174,7 @@ scenes:
   #   browser_capture  — drive a REAL running app/site + record interactions
   #   screen_recording — import an existing .mp4 (Screen Studio / OBS)
   #   before_after     — a labeled BEFORE/AFTER comparison of two clips (task demos)
+  #   diorama          — N windows on a big canvas + an eased camera tour + a roaming mascot
   #   html_mockup      — render a local HTML file (like built-in graph/endcards)
   #   terminal         — built-in terminal scene (hero|input|amnesia|recall|agent:N)
   #   graph            — built-in knowledge-graph scene
@@ -186,6 +187,30 @@ scenes:
   #     after:  { url: "http://localhost:5001/...", actions: [...], auth: true, label: "AFTER" }  # green, recorded
   #     layout: sequential   # before-then-after (default) | side_by_side
   #     half_duration: 8     # optional: trim each half to N seconds
+  #
+  # diorama — N terminal/browser windows on a big canvas; an eased camera pans and
+  #   zooms between them while the mascot hops window-to-window (the Claude "agent
+  #   view" look). v1: windows are STATIC and the mascot is PLACED at window anchors
+  #   (top | beside | on), not physics-walked. The canvas MUST be 16:9 (the camera
+  #   frames a 16:9 region). Scene length defaults to the camera tour (sum of holds +
+  #   transitions) unless `duration:` pins it. Heavier than a flat scene (canvas
+  #   composite + camera pass). The global mascot's corner overlay is auto-suppressed
+  #   here — the diorama composites its own mascot on the canvas.
+  #   - type: diorama
+  #     duration: 14                     # optional — else = the camera tour's length
+  #     canvas: { width: 2560, height: 1440, backdrop: "color=c=0x0a0705" }  # 16:9; backdrop: lavfi color= OR an image path
+  #     windows:                         # each: id, top-left (x,y) + width (w) on the canvas; height follows the clip aspect
+  #       - { id: worker,   source: "footage/worker.mp4",        x: 120,  y: 300, w: 1000 }
+  #       - { id: reviewer, url: "http://localhost:3000/review", x: 1440, y: 600, w: 1000, actions: [{ wait: 1.0 }] }  # live capture
+  #     camera:                          # stops: focus a window id | "all" (bbox) | "mascot"; zoom>1 tightens; hold secs; transition eases IN
+  #       - { focus: all,      zoom: 1.0, hold: 1.5 }
+  #       - { focus: worker,   zoom: 1.8, hold: 3.0, transition: 1.2 }
+  #       - { focus: reviewer, zoom: 1.8, hold: 3.0, transition: 1.2 }
+  #     mascot:                          # window-relative keyframes: at_window + anchor (top | beside | on)
+  #       keyframes:
+  #         - { at: 0,  emotion: idle,      at_window: worker,   anchor: top }
+  #         - { at: 5,  emotion: point,     at_window: reviewer, anchor: beside }   # hops worker -> reviewer (auto walk)
+  #         - { at: 10, emotion: celebrate, at_window: reviewer, anchor: top }
   custom_scenes:
     - type: browser_capture
       url: "http://localhost:3000/dashboard"   # real app, or https://yoursite.com
