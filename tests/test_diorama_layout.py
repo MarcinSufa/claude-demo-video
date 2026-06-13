@@ -156,17 +156,14 @@ class TestViewportAt(unittest.TestCase):
 
 class TestAssertCanvas16x9(unittest.TestCase):
     def test_accepts_16_9(self):
-        from diorama_layout import assert_canvas_16_9
         assert_canvas_16_9({"width": 2560, "height": 1440})   # no raise
         assert_canvas_16_9({"width": 1920, "height": 1080})
 
     def test_rejects_other_aspect(self):
-        from diorama_layout import assert_canvas_16_9
         with self.assertRaises(ValueError):
             assert_canvas_16_9({"width": 2560, "height": 1200})
 
     def test_error_names_the_dimensions(self):
-        from diorama_layout import assert_canvas_16_9
         with self.assertRaises(ValueError) as cm:
             assert_canvas_16_9({"width": 2000, "height": 1000})
         self.assertIn("2000x1000", str(cm.exception))
