@@ -23,6 +23,14 @@ def window_anchor(win, anchor, sprite_w, sprite_h):
     raise ValueError(f"unknown mascot anchor '{anchor}' (top|beside|on)")
 
 
+def assert_canvas_16_9(canvas, tol=0.01):
+    """Raise ValueError unless the canvas is 16:9 (within tol). The diorama camera
+    frames a 16:9 region via zoompan; a non-16:9 canvas would distort silently."""
+    w, h = canvas["width"], canvas["height"]
+    if abs(w / h - 16 / 9) > tol:
+        raise ValueError(f"diorama canvas must be 16:9 (got {w}x{h})")
+
+
 def _bbox(rects):
     x0 = min(r["x"] for r in rects); y0 = min(r["y"] for r in rects)
     x1 = max(r["x"] + r["w"] for r in rects); y1 = max(r["y"] + r["h"] for r in rects)

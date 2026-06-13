@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from diorama_layout import (  # noqa: E402
-    camera_duration, camera_timeline, viewport_at, window_anchor)
+    assert_canvas_16_9, camera_duration, camera_timeline, viewport_at, window_anchor)
 
 
 def build_canvas_filter(windows, canvas):
@@ -131,6 +131,7 @@ def main():
     with open(a.plan_json, encoding="utf-8") as f:
         plan = json.load(f)
     canvas, windows = plan["canvas"], plan["windows"]
+    assert_canvas_16_9(canvas)          # fail loud, not silent zoompan distortion
     # Duration is the camera tour's length unless the scene pins one explicitly.
     dur = plan["duration"] if plan.get("duration") is not None else camera_duration(plan["camera"])
     dur, fps = float(dur), int(plan.get("fps", 30))
