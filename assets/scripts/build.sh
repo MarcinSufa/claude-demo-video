@@ -19,16 +19,6 @@ SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"   # .../scripts
 SKILL_ASSETS="$(dirname "$SKILL_SCRIPTS")"        # .../assets  (mascots live at $SKILL_ASSETS/mascots)
 BUILD=".build"
 
-# Vendored-script drift guard: warn (don't block) if this project's scripts/ is
-# internally inconsistent — a partial re-sync from the skill that silently mixes
-# old + new scripts. Turns a confusing soft failure into a clear "re-sync" message.
-if [ -f "$SKILL_SCRIPTS/scripts_fingerprint.py" ]; then
-  if ! python "$SKILL_SCRIPTS/scripts_fingerprint.py" --check "$SKILL_SCRIPTS"; then
-    echo "WARNING: demo-video scripts are out of sync (see above). The build may"
-    echo "         misbehave; re-copy assets/scripts/* from the skill to fix."
-  fi
-fi
-
 # ─── Progress bar + elapsed/ETA ─────────────────────────────────────────
 BUILD_START=$(date +%s)
 step() {                       # step <percent> <label...>
@@ -61,6 +51,20 @@ done
 step 4 "Verifying prerequisites"
 for cmd in ffmpeg ffprobe python; do command -v $cmd >/dev/null || { echo "Missing: $cmd"; exit 1; }; done
 python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyaml"; exit 1; }
+
+# Vendored-script drift guard (after the python prereq so a missing interpreter
+# reports "Missing: python", not a misleading drift warning). A project keeps a
+# COPY of these scripts; a partial re-sync silently mixes old + new and fails in
+# confusing ways. Warn by default; DEMO_STRICT_SCRIPTS=1 makes drift a hard error.
+if [ -f "$SKILL_SCRIPTS/scripts_fingerprint.py" ]; then
+  if ! python "$SKILL_SCRIPTS/scripts_fingerprint.py" --check "$SKILL_SCRIPTS"; then
+    if [ "${DEMO_STRICT_SCRIPTS:-0}" = "1" ]; then
+      echo "ERROR: demo-video scripts are out of sync (DEMO_STRICT_SCRIPTS=1). Re-copy assets/scripts/*."; exit 1
+    fi
+    echo "WARNING: demo-video scripts are out of sync (see above). The build may"
+    echo "         misbehave; re-copy assets/scripts/* from the skill to fix."
+  fi
+fi
 
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"

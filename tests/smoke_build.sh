@@ -89,8 +89,10 @@ OUT="videos/final-with-captions.mp4"
 [ -f "$OUT" ] || { tail -30 "$TMP/build.log"; fail "no $OUT produced"; }
 DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUT" 2>/dev/null)
 python -c "import sys; sys.exit(0 if float('${DUR:-0}') > 2 else 1)" || fail "video too short ($DUR s)"
-# non-blank: a mid frame must have real colour variety (catches white-flash / blank render)
-ffmpeg -v error -ss 5 -i "$OUT" -frames:v 1 "$TMP/f.png"
+# non-blank: a mid frame must have real colour variety (catches white-flash / blank
+# render). Seek to the midpoint so a shorter smoke config never seeks past EOF.
+MID=$(python -c "print(max(0.5, float('${DUR:-0}') / 2))")
+ffmpeg -v error -ss "$MID" -i "$OUT" -frames:v 1 "$TMP/f.png"
 python - "$TMP/f.png" <<'PY' || fail "mid frame looks blank (one solid colour)"
 import subprocess, sys
 raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", sys.argv[1],

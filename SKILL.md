@@ -475,9 +475,12 @@ scenes:
   to fail silently (e.g. a new `build.sh` passing `--scale` to an old
   `render-mascot.py`). `build.sh` now fingerprints its scripts against the committed
   `assets/scripts/VERSION` and **warns** if they're inconsistent — re-copy ALL of
-  `assets/scripts/*` to fix. After changing any runtime script, refresh the stamp:
+  `assets/scripts/*` to fix. `DEMO_STRICT_SCRIPTS=1` makes drift a hard error
+  instead of a warning. After changing any runtime script, refresh the stamp:
   `python assets/scripts/scripts_fingerprint.py --write assets/scripts` (a unit test
-  enforces it's current).
+  enforces it's current). **Migration:** projects scaffolded before this guard
+  existed lack `scripts_fingerprint.py`/`VERSION` and silently skip the check until
+  you re-copy the full `assets/scripts/*` set once.
 - **CI** — `.github/workflows/test.yml` runs the unit tests, shell syntax checks, and
   the `--plan` smoke tier on every push/PR.
 
