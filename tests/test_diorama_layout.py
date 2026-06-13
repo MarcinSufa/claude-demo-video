@@ -25,7 +25,7 @@ class TestWindowAnchor(unittest.TestCase):
             window_anchor(WIN, "sideways", 160, 140)
 
 
-from diorama_layout import focus_rect, camera_timeline, viewport_at  # noqa: E402
+from diorama_layout import focus_rect, camera_timeline, camera_duration, viewport_at  # noqa: E402
 
 CANVAS = {"width": 3840, "height": 2160}
 WINS = {
@@ -87,6 +87,30 @@ class TestCameraTimeline(unittest.TestCase):
         moves = [s for s in segs if s[2] != s[3]]
         self.assertEqual(len(holds), 2)
         self.assertEqual(len(moves), 1)                  # the 1s transition
+
+
+class TestCameraDuration(unittest.TestCase):
+    STOPS = [
+        {"focus": "a", "zoom": 2.0, "hold": 3},
+        {"focus": "b", "zoom": 2.0, "hold": 4, "transition": 1.0},
+    ]
+
+    def test_sums_holds_and_transitions(self):
+        self.assertAlmostEqual(camera_duration(self.STOPS), 3 + 1 + 4)
+
+    def test_first_stop_transition_ignored(self):
+        # a transition on the first stop has nothing to ease from — it must not count
+        stops = [{"focus": "a", "hold": 2, "transition": 5}, {"focus": "b", "hold": 3}]
+        self.assertAlmostEqual(camera_duration(stops), 2 + 3)
+
+    def test_default_hold_when_unspecified(self):
+        self.assertAlmostEqual(camera_duration([{"focus": "a"}, {"focus": "b"}]), 2.0 + 2.0)
+
+    def test_matches_camera_timeline_total(self):
+        # the geometry-free duration MUST equal camera_timeline's accumulated total,
+        # or a no-duration diorama would clip or pad its final hold
+        _, total = camera_timeline(self.STOPS, WINS, CANVAS)
+        self.assertAlmostEqual(camera_duration(self.STOPS), total)
 
 
 class TestViewportAt(unittest.TestCase):

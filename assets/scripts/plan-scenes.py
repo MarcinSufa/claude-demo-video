@@ -84,6 +84,9 @@ def mascot_stub(mascot_cfg, entry, scene_override):
         enabled = False  # off by default on endcards (spec)
     if "enabled" in ov:
         enabled = bool(ov["enabled"])
+    if entry.get("type") == "diorama":
+        enabled = False  # diorama composites its mascot on the canvas (window-relative
+        #                  keyframes) inside make-diorama — never the corner overlay phase
     stub = {
         "enabled": enabled,
         "character": mascot_cfg.get("character", "octopus"),

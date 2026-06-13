@@ -52,6 +52,19 @@ def focus_rect(stop, windows, canvas, out_aspect=16 / 9, mascot_xy=None):
     return round(x), round(y), round(vw), round(vh)
 
 
+def camera_duration(stops):
+    """Total seconds of a camera tour: each stop's `hold`, plus its `transition`
+    for stops after the first. Geometry-independent (no windows needed), so a
+    diorama with no explicit `duration` can default to its tour length. MUST stay
+    in lockstep with camera_timeline's accumulated total (asserted in tests)."""
+    total = 0.0
+    for i, stop in enumerate(stops):
+        if i > 0:
+            total += float(stop.get("transition", 0.0))
+        total += float(stop.get("hold", 2.0))
+    return total
+
+
 def camera_timeline(stops, windows, canvas, out_aspect=16 / 9):
     """Camera stops -> [(start, end, from_vp, to_vp), ...] and total seconds.
     `transition` (seconds, into a stop) eases the viewport; `hold` holds it."""

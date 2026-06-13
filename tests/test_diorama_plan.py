@@ -54,5 +54,19 @@ class TestDioramaPlan(unittest.TestCase):
                         "a segment at window 'a' should appear")
 
 
+class TestDioramaMascotSuppressed(unittest.TestCase):
+    def test_mascot_plan_disabled_for_diorama(self):
+        # the diorama composites its own mascot on the canvas (window-relative
+        # keyframes), so the standard corner-overlay phase must never fire — even
+        # when the global mascot is enabled and the scene carries keyframes
+        stub = ps.mascot_stub(
+            {"enabled": True, "character": "kangaroo"},
+            {"type": "diorama"},
+            {"enabled": True, "keyframes": [{"at": 0, "emotion": "idle",
+                                             "at_window": "a", "anchor": "top"}]})
+        self.assertFalse(stub["enabled"])
+        self.assertNotIn("keyframes", stub)   # overlay keyframes must not leak through
+
+
 if __name__ == "__main__":
     unittest.main()
