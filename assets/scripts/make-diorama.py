@@ -22,6 +22,34 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from diorama_layout import (  # noqa: E402
     assert_canvas_16_9, camera_duration, camera_timeline, viewport_at, window_anchor)
 
+BAR_H = 40   # title-bar height in canvas px (constant — real title bars are ~fixed)
+
+
+def _ffcolor(c):
+    """'#1e1714' / '1e1714' / '0x1e1714' -> '0x1e1714' for ffmpeg drawbox/drawtext."""
+    c = str(c)
+    if c.startswith("0x"):
+        return c
+    return "0x" + c.lstrip("#")
+
+
+def chrome_metrics(bar_h):
+    """Derived chrome sizes from the bar height (so they scale together and are
+    unit-testable): dot diameter/gap, left pad, dots-strip size, title x + font."""
+    d = max(8, round(bar_h * 0.30))
+    gap = max(4, round(d * 0.6))
+    pad = round(bar_h * 0.5)
+    strip_w = 3 * d + 2 * gap
+    return {"d": d, "gap": gap, "pad": pad, "strip_w": strip_w, "strip_h": d,
+            "title_x": pad + strip_w + round(bar_h * 0.5),
+            "title_fs": max(10, round(bar_h * 0.42))}
+
+
+def window_h(w_px, clip_cw, clip_ch, chrome):
+    """A window's full canvas height: the clip scaled to width w_px, plus the title
+    bar (BAR_H) when the window has chrome. focus_rect/camera/anchors use this."""
+    return round(w_px * clip_ch / clip_cw) + (BAR_H if chrome else 0)
+
 
 def build_canvas_filter(windows, canvas):
     """Backdrop ([0:v]) scaled to canvas, then each window clip ([i:v], i>=1)

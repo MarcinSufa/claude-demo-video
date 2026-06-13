@@ -120,5 +120,25 @@ class TestCanvasPositions(unittest.TestCase):
         self.assertGreaterEqual(y, 0)
 
 
+class TestChromeHelpers(unittest.TestCase):
+    def test_ffcolor_normalizes_hex(self):
+        self.assertEqual(md._ffcolor("#1e1714"), "0x1e1714")
+        self.assertEqual(md._ffcolor("2c2c32"), "0x2c2c32")
+        self.assertEqual(md._ffcolor("0xabcdef"), "0xabcdef")
+
+    def test_chrome_metrics_scale_from_bar_height(self):
+        m = md.chrome_metrics(40)
+        self.assertEqual(m["strip_w"], 3 * m["d"] + 2 * m["gap"])
+        self.assertEqual(m["strip_h"], m["d"])
+        self.assertGreater(m["title_x"], m["pad"] + m["strip_w"])  # title right of dots
+        for k in ("d", "gap", "pad", "title_x", "title_fs"):
+            self.assertGreater(m[k], 0)
+
+    def test_window_h_adds_bar_only_for_chrome(self):
+        clip_only = round(1000 * 1080 / 1920)
+        self.assertEqual(md.window_h(1000, 1920, 1080, False), clip_only)
+        self.assertEqual(md.window_h(1000, 1920, 1080, True), clip_only + md.BAR_H)
+
+
 if __name__ == "__main__":
     unittest.main()
