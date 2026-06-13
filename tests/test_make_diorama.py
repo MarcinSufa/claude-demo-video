@@ -160,5 +160,46 @@ class TestDotsRgba(unittest.TestCase):
         self.assertEqual(buf[3], 0)                  # top-left pixel alpha == 0
 
 
+class TestChromeFilter(unittest.TestCase):
+    WINS = [{"id": "a", "x": 100, "y": 200, "w": 900, "chrome": True, "title_file": "ta.txt"},
+            {"id": "b", "x": 1500, "y": 200, "w": 900}]   # b: no chrome
+    STYLE = {"bar_bg": "0x17171a", "rule": "0x2c2c32", "fg": "0xf4efe3"}
+
+    def test_draws_bar_dots_title_for_chrome_window_only(self):
+        f = md.chrome_filter(self.WINS, in_label="canvas", out_label="vout",
+                             dots_index=3, style=self.STYLE, font="C:/f.ttf")
+        self.assertIn(f"drawbox=x=100:y=200:w=900:h={md.BAR_H}", f)   # bar at window a
+        self.assertIn("0x17171a", f)                                  # bar bg colour
+        self.assertIn("overlay=", f)                                  # dots overlay
+        self.assertIn("ta.txt", f.replace("\\", ""))                 # title textfile
+        self.assertEqual(f.count("drawbox=x=100:y=200:w=900"), 1)     # exactly one bar (window a)
+        self.assertNotIn("x=1500", f)                                 # window b (no chrome, x=1500) untouched
+
+    def test_passthrough_when_no_chrome_windows(self):
+        plain = [{"id": "b", "x": 0, "y": 0, "w": 900}]
+        f = md.chrome_filter(plain, in_label="canvas", out_label="vout",
+                             dots_index=None, style=None, font=None)
+        self.assertEqual(f, "[canvas]null[vout]")       # nothing to draw
+
+    def test_dots_input_split_per_chrome_window(self):
+        wins = [dict(self.WINS[0]), {"id": "c", "x": 50, "y": 50, "w": 800,
+                                     "chrome": True, "title_file": "tc.txt"}]
+        f = md.chrome_filter(wins, in_label="canvas", out_label="vout",
+                             dots_index=3, style=self.STYLE, font=None)
+        self.assertIn("[3:v]split=2", f)                # one dots copy per chrome window
+
+
+class TestCanvasClipOffset(unittest.TestCase):
+    def test_chrome_window_clip_overlaid_below_the_bar(self):
+        wins = [{"id": "a", "x": 100, "y": 200, "w": 900, "chrome": True}]
+        f = md.build_canvas_filter(wins, {"width": 2560, "height": 1440})
+        self.assertIn(f"overlay=100:{200 + md.BAR_H}", f)    # clip pushed down by BAR_H
+
+    def test_plain_window_clip_overlaid_at_origin(self):
+        wins = [{"id": "a", "x": 100, "y": 200, "w": 900}]
+        f = md.build_canvas_filter(wins, {"width": 2560, "height": 1440})
+        self.assertIn("overlay=100:200", f)
+
+
 if __name__ == "__main__":
     unittest.main()

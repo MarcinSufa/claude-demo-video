@@ -12,6 +12,7 @@ builders; diorama_layout.py holds the geometry. The graph is verified end-to-end
 by tests/smoke_build.sh's diorama tier.
 """
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -81,15 +82,51 @@ def window_h(w_px, clip_cw, clip_ch, chrome):
 
 def build_canvas_filter(windows, canvas):
     """Backdrop ([0:v]) scaled to canvas, then each window clip ([i:v], i>=1)
-    scaled to its width and overlaid at (x, y). Returns the filter_complex up to
-    label [canvas]."""
+    scaled to its width and overlaid at (x, y) — chrome windows' clips are pushed
+    down by BAR_H to leave room for the title bar drawn later. Ends at [canvas]."""
     parts = [f"[0:v]scale={canvas['width']}:{canvas['height']},setsar=1[bg]"]
     src = "[bg]"
     for i, w in enumerate(windows, 1):
         parts.append(f"[{i}:v]scale={w['w']}:-2,setsar=1[w{i}]")
         label = "[canvas]" if i == len(windows) else f"[c{i}]"
-        parts.append(f"{src}[w{i}]overlay={w['x']}:{w['y']}{label}")
+        wy = w["y"] + (BAR_H if w.get("chrome") else 0)
+        parts.append(f"{src}[w{i}]overlay={w['x']}:{wy}{label}")
         src = f"[c{i}]"
+    return ";".join(parts)
+
+
+# make-before-after helpers (find_font / _esc_path / ascii_label), loaded at MODULE
+# level so module-level chrome_filter can escape paths without re-importing (main()
+# reuses find_font / ascii_label too).
+_mba_spec = importlib.util.spec_from_file_location(
+    "make_before_after", os.path.join(os.path.dirname(os.path.abspath(__file__)), "make-before-after.py"))
+_mba = importlib.util.module_from_spec(_mba_spec); _mba_spec.loader.exec_module(_mba)
+
+
+def chrome_filter(windows, in_label, out_label, dots_index, style, font):
+    """Draw the title bar (drawbox), traffic-light dots (overlay of input
+    [dots_index]) and title (drawtext, textfile) on `in_label` for each chrome
+    window, producing `out_label`. A no-op `null` when no window has chrome."""
+    chrome = [w for w in windows if w.get("chrome")]
+    if not chrome:
+        return f"[{in_label}]null[{out_label}]"
+    m = chrome_metrics(BAR_H)
+    fontclause = f"fontfile='{_mba._esc_path(font)}':" if font else ""
+    parts = [f"[{dots_index}:v]split={len(chrome)}" + "".join(f"[dots{i}]" for i in range(len(chrome)))]
+    src = in_label
+    for i, w in enumerate(chrome):
+        x, y, ww = w["x"], w["y"], w["w"]
+        nxt = out_label if i == len(chrome) - 1 else f"chr{i}"
+        bar = (f"drawbox=x={x}:y={y}:w={ww}:h={BAR_H}:color={style['bar_bg']}:t=fill,"
+               f"drawbox=x={x}:y={y + BAR_H - 2}:w={ww}:h=2:color={style['rule']}:t=fill")
+        dots_x, dots_y = x + m["pad"], y + (BAR_H - m["strip_h"]) // 2
+        title = (f"drawtext={fontclause}textfile='{_mba._esc_path(w['title_file'])}':"
+                 f"x={x + m['title_x']}:y={y}+({BAR_H}-text_h)/2:"
+                 f"fontsize={m['title_fs']}:fontcolor={style['fg']}")
+        parts.append(f"[{src}]{bar}[chrb{i}]")
+        parts.append(f"[chrb{i}][dots{i}]overlay={dots_x}:{dots_y}[chrd{i}]")
+        parts.append(f"[chrd{i}]{title}[{nxt}]")
+        src = nxt
     return ";".join(parts)
 
 
