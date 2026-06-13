@@ -26,7 +26,7 @@ macOS traffic lights: three filled **round** dots — red `#ff5f57`, amber `#feb
 
 ### Rendering — pure ffmpeg (no browser, no Pillow)
 
-Chrome is drawn inside the canvas composite, per window with `chrome: true`:
+Chrome is drawn as a **post-composite pass** (`chrome_filter`) over the assembled `[canvas]`, for each window with `chrome: true` — `build_canvas_filter` only offsets the chrome clips downward by `BAR_H`:
 
 - **Bar + rule:** two `drawbox` fills — the bar (`x=WX:y=WY:w=W:h=BAR_H:color=<end_card_bg>:t=fill`) and a 2px bottom rule.
 - **Dots:** a small **round-dots RGBA PNG** generated once via the same raw-RGBA→PNG technique `render-mascot.py` uses (paint three filled, lightly anti-aliased circles into an RGBA buffer, pipe to `ffmpeg -f rawvideo -pix_fmt rgba`). It is added as one ffmpeg input, `split` to N, and `overlay`-ed into each chrome bar's left, vertically centered. **Round dots are pixels, not a `●` glyph** — the pipeline already sanitizes drawtext to ASCII because its text reader is unreliable with unicode on Windows (`make-before-after.py`), so a `●` glyph is off the table.
@@ -39,7 +39,7 @@ The bar/rule/fg colours travel in the diorama plan JSON (a `chrome_style` block 
 - `BAR_H` is a **constant** 40 canvas px (real title bars are ~constant height regardless of window size; also lets one dots PNG serve every chrome window).
 - For a chrome window: the clip is overlaid at `(WX, WY + BAR_H)`; the bar is drawn at `(WX, WY)` spanning width `W`, `BAR_H` tall.
 - The window's **layout height** becomes `H = BAR_H + clip_h` (where `clip_h = round(W * clip_ch / clip_cw)` from the clip aspect). This `H` is what `focus_rect` / `camera_timeline` / `window_anchor` consume — so the camera frames the whole window *including* its chrome, and `top`/`on`/`beside` anchors are relative to the bar+clip rect.
-- Derived sizes via a pure `chrome_metrics(BAR_H)` helper (so they're unit-testable): dot diameter ≈ `round(BAR_H*0.32)`, dot gap, left pad ≈ `round(BAR_H*0.5)`, title x ≈ `round(BAR_H*1.9)`, title font size ≈ `round(BAR_H*0.42)`.
+- Derived sizes via a pure `chrome_metrics(BAR_H)` helper (so they're unit-testable): dot diameter `round(BAR_H*0.30)`, dot gap, left pad `round(BAR_H*0.5)`, title x (right of the dots), title font size `round(BAR_H*0.42)`. (The plan's `chrome_metrics` is authoritative for the exact constants.)
 - Windows **without** chrome are unchanged: `H = clip_h`, clip overlaid at `(WX, WY)`, no bar.
 
 ### Guardrail 1 — canvas must be 16:9
@@ -56,17 +56,18 @@ The bar/rule/fg colours travel in the diorama plan JSON (a `chrome_style` block 
 2. **`build-scenes.sh`** diorama heredoc — carry `chrome`/`title` into each make-diorama plan window; when any window has chrome, add a `chrome_style` block to the plan JSON (`bar_bg`, `rule`, `fg` from `config.json`'s palette). The drawtext font is resolved inside `make-diorama` (via the imported `find_font()`), not here.
 3. **`make-diorama.py`**:
    - `main()` — call `assert_canvas_16_9(canvas)`; compute `H = BAR_H + clip_h` for chrome windows (else `clip_h`); when chrome windows exist, generate the dots PNG and write per-window title textfiles, add the dots `-i` input.
-   - `build_canvas_filter(windows, canvas, chrome_style=None)` — for each window: scale clip to `W`, overlay at `(x, y + BAR_H if chrome else y)`; for chrome windows also emit the bar/rule `drawbox`, the dots `overlay`, and the title `drawtext`. Factor a pure `chrome_chain(win, metrics, chrome_style, dots_label)` returning one window's chrome substring (unit-tested like `build_camera_filter`).
+   - `build_canvas_filter(windows, canvas)` — overlay each clip at `(x, y + BAR_H if chrome else y)` (the only chrome change here: chrome clips drop by `BAR_H`).
+   - `chrome_filter(windows, in_label, out_label, dots_index, style, font)` — a separate post-composite pass that, for each chrome window, emits the bar/rule `drawbox`, the dots `overlay` (input `[dots_index]`, `split` per chrome window), and the title `drawtext`; a `null` pass when no window has chrome. Pure, unit-tested like `build_camera_filter`.
    - `resolve_canvas_positions(timeline, windows, sprite_wh, canvas)` — clamp anchors.
 
 ## Testing
 
-- **Pure unit tests** (no ffmpeg): `chrome_metrics(BAR_H)` derived sizes; `chrome_chain(...)` emits the bar drawbox, dots overlay, and title drawtext with the right coords/colours and the `BAR_H` clip offset; a chrome window's `H` includes `BAR_H` while a plain window's does not; `assert_canvas_16_9` raises on 2560×1200 and passes on 2560×1440; `resolve_canvas_positions` keeps an edge-window anchor inside the canvas (and clamps both move endpoints).
+- **Pure unit tests** (no ffmpeg): `chrome_metrics(BAR_H)` derived sizes; `dots_rgba` strip bytes (length, centre colours, transparent corner); `chrome_filter(...)` emits the bar drawbox, dots overlay (with `split`), and title drawtext for chrome windows only; `build_canvas_filter` offsets a chrome clip by `BAR_H`; `window_h` adds `BAR_H` only for chrome; `assert_canvas_16_9` raises on 2560×1200 and passes on 2560×1440; `resolve_canvas_positions` keeps an edge-window anchor inside the canvas (and clamps both move endpoints); `build_plan` carries chrome/title + chrome_style + mascot runtime.
 - **Integration:** add one `chrome: true` window to the smoke diorama scene and keep the existing 1920×1080 + non-blank assertions (proves the chrome filter graph runs end-to-end). Reuse the existing `nonblank` helper.
 
 ## Files
 
-- `assets/scripts/make-diorama.py` — chrome rendering (`chrome_chain`, `chrome_metrics`, `BAR_H`), `build_canvas_filter` chrome branch + clip offset, window-`H` incl. bar, dots-PNG generation + title textfiles in `main()`, `resolve_canvas_positions` clamp, `assert_canvas_16_9` call.
+- `assets/scripts/make-diorama.py` — chrome rendering (`chrome_filter`, `chrome_metrics`, `dots_rgba`, `window_h`, `_ffcolor`, `BAR_H`), `build_canvas_filter` clip offset, dots-PNG generation + title textfiles in `main()`, `resolve_canvas_positions` clamp, `assert_canvas_16_9` call, module-level `make-before-after` load.
 - `assets/scripts/diorama_layout.py` — `assert_canvas_16_9`.
 - `assets/scripts/build-scenes.sh` — carry `chrome`/`title`; inject `chrome_style`.
 - `SKILL.md`, `assets/brand.example.yaml` — document `chrome: true` + `title:` per window.
@@ -75,7 +76,7 @@ The bar/rule/fg colours travel in the diorama plan JSON (a `chrome_style` block 
 
 ## Implementation notes (from design review)
 
-- **Per-window filter order.** For each window, in order: `overlay` the clip at `(x, y + BAR_H if chrome else y)`; then for chrome windows `drawbox` bar at `(x, y, W, BAR_H)` → `drawbox` rule at `(x, y+BAR_H-2, W, 2)` → `overlay` dots (left pad, vertically centered) → `drawtext` title. `chrome_chain()` returns this fragment in this fixed order so tests can assert it.
+- **Filter order.** `build_canvas_filter` overlays each clip at `(x, y + BAR_H if chrome else y)`. Then `chrome_filter` runs post-composite and, per chrome window, emits in this fixed order: `drawbox` bar at `(x, y, W, BAR_H)` → `drawbox` rule at `(x, y+BAR_H-2, W, 2)` → `overlay` dots (left pad, vertically centered) → `drawtext` title. The fixed order lets tests assert the fragment. `build_plan` keeps mascot RUNTIME enrichment (frames_dir/fps from ./mascot) in the caller (filesystem I/O), not in the pure function.
 - **Hex → ffmpeg colour.** The brand palette is `#RRGGBB`; `drawbox`/`drawtext` want `0xRRGGBB`. Add a tiny `_ffcolor("#1e1714") -> "0x1e1714"` normalizer — nothing in the repo does this yet (`drawbox` is unused today; `assemble.sh` only strips `#` for a different use).
 - **Dots PNG is a single image.** Same raw-RGBA pipe as `render-mascot.py`, but one frame, not an `f_%03d.png` sequence: `ffmpeg -f rawvideo -pix_fmt rgba -s WxH -i - -frames:v 1 dots.png`. `chrome_metrics(BAR_H)` also returns the dots strip's width/height (≈ `3*diameter + 2*gap` × `diameter`).
 - **ffmpeg input indexing.** Inputs stay `[0]=backdrop`, `[1..N]=window clips`; the dots PNG is added as input `[N+1]` and `split` to one copy per chrome window. Window labels `[1:v..N:v]` are unchanged; tests assert the dots label/index.

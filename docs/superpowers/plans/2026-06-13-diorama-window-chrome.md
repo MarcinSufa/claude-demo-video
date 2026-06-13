@@ -75,7 +75,7 @@ def assert_canvas_16_9(canvas, tol=0.01):
 Run: `python tests/test_diorama_layout.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Wire into `make-diorama.py:main()`** — add the import to the existing `from diorama_layout import (...)` block, and call it right after `canvas, windows = plan["canvas"], plan["windows"]`:
+- [ ] **Step 5: Wire into `make-diorama.py`** — the import goes at the **top of the file** (extend the existing `from diorama_layout import (...)` block); the **call** goes inside `main()`, right after `canvas, windows = plan["canvas"], plan["windows"]`:
 
 ```python
 from diorama_layout import (  # noqa: E402
@@ -234,16 +234,22 @@ class TestBuildPlan(unittest.TestCase):
         plain = {**SCENE, "windows": [{"id": "a", "x": 1, "y": 2, "w": 900}]}
         self.assertIsNone(dp.build_plan(plain, {"a": "x.mp4"}, STYLE).get("chrome_style"))
 
-    def test_backdrop_and_duration_and_mascot_pass_through(self):
+    def test_backdrop_and_duration_pass_through(self):
         plan = dp.build_plan(SCENE, CLIPS, STYLE)
         self.assertEqual(plan["backdrop"], "color=c=0x121214")
         self.assertEqual(plan["duration"], 12)
-        self.assertEqual(plan["mascot"]["keyframes"][0]["at_window"], "a")
         self.assertEqual(plan["fps"], 30)
 
     def test_default_backdrop_when_canvas_has_none(self):
         s = {**SCENE, "canvas": {"width": 2560, "height": 1440}}
         self.assertEqual(dp.build_plan(s, CLIPS, STYLE)["backdrop"], "color=c=0x0a0705")
+
+    def test_mascot_runtime_passed_through_else_none(self):
+        # mascot is the resolved runtime dict (keyframes + frames_dir + fps), built
+        # by the caller from ./mascot — build_plan just stores it (None when absent)
+        self.assertIsNone(dp.build_plan(SCENE, CLIPS, STYLE)["mascot"])
+        m = {"keyframes": SCENE["mascot"]["keyframes"], "frames_dir": "mascot", "fps": 12}
+        self.assertEqual(dp.build_plan(SCENE, CLIPS, STYLE, mascot=m)["mascot"], m)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -261,12 +267,15 @@ then calls build_plan(). Kept separate from recording so it is unit-testable.
 """
 
 
-def build_plan(scene, clips, chrome_style, fps=30):
+def build_plan(scene, clips, chrome_style, mascot=None, fps=30):
     """scene (the diorama entry minus id/type/mp4) + clips {win_id: clip_path} +
     chrome_style {bar_bg, rule, fg} -> the make-diorama plan dict.
 
     Carries chrome/title per window; attaches chrome_style only when some window
-    has chrome. backdrop falls back to a dark solid; mascot/duration pass through.
+    has chrome. `mascot` is the already-resolved RUNTIME dict (keyframes +
+    frames_dir + fps) the caller builds — it is filesystem-derived (needs
+    ./mascot + mascot-meta.json), so it is passed in, not read from `scene` here.
+    backdrop falls back to a dark solid; duration passes through.
     """
     windows = []
     has_chrome = False
@@ -283,7 +292,7 @@ def build_plan(scene, clips, chrome_style, fps=30):
         "windows": windows,
         "fps": fps,
         "backdrop": (scene.get("canvas") or {}).get("backdrop") or "color=c=0x0a0705",
-        "mascot": scene.get("mascot"),
+        "mascot": mascot,
     }
     if scene.get("duration") is not None:
         plan["duration"] = scene["duration"]
@@ -320,7 +329,12 @@ pal = json.load(open("config.json")).get("palette", {})   # raw brand palette (a
 style = {"bar_bg": pal.get("end_card_bg", "#17171a"),
          "rule":   pal.get("rule", "#2c2c32"),
          "fg":     pal.get("fg", "#f4efe3")}               # raw #RRGGBB; make-diorama _ffcolor's it
-json.dump(dp.build_plan(e, clips, style), open(f".diorama-{sid}.json", "w"))
+# Mascot RUNTIME enrichment (filesystem-derived) stays here, not in pure build_plan:
+mascot = None
+if e.get("mascot") and os.path.isdir("mascot"):
+    mfps = json.load(open("mascot/mascot-meta.json")).get("fps", 12)
+    mascot = {"keyframes": e["mascot"]["keyframes"], "frames_dir": "mascot", "fps": mfps}
+json.dump(dp.build_plan(e, clips, style, mascot=mascot), open(f".diorama-{sid}.json", "w"))
 PY
 ```
 
@@ -368,6 +382,11 @@ class TestChromeHelpers(unittest.TestCase):
         self.assertGreater(m["title_x"], m["pad"] + m["strip_w"])  # title right of dots
         for k in ("d", "gap", "pad", "title_x", "title_fs"):
             self.assertGreater(m[k], 0)
+
+    def test_window_h_adds_bar_only_for_chrome(self):
+        clip_only = round(1000 * 1080 / 1920)
+        self.assertEqual(md.window_h(1000, 1920, 1080, False), clip_only)
+        self.assertEqual(md.window_h(1000, 1920, 1080, True), clip_only + md.BAR_H)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -399,6 +418,12 @@ def chrome_metrics(bar_h):
     return {"d": d, "gap": gap, "pad": pad, "strip_w": strip_w, "strip_h": d,
             "title_x": pad + strip_w + round(bar_h * 0.5),
             "title_fs": max(10, round(bar_h * 0.42))}
+
+
+def window_h(w_px, clip_cw, clip_ch, chrome):
+    """A window's full canvas height: the clip scaled to width w_px, plus the title
+    bar (BAR_H) when the window has chrome. focus_rect/camera/anchors use this."""
+    return round(w_px * clip_ch / clip_cw) + (BAR_H if chrome else 0)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -570,6 +595,16 @@ def build_canvas_filter(windows, canvas):
     return ";".join(parts)
 
 
+# make-before-after helpers (find_font / _esc_path / ascii_label), loaded at MODULE
+# level so module-level chrome_filter can escape paths without re-importing (main()
+# reuses find_font / ascii_label too). Requires `import importlib.util` in the top
+# imports of make-diorama.py (it is currently imported inside main() — move/add it
+# to the top).
+_mba_spec = importlib.util.spec_from_file_location(
+    "make_before_after", os.path.join(os.path.dirname(os.path.abspath(__file__)), "make-before-after.py"))
+_mba = importlib.util.module_from_spec(_mba_spec); _mba_spec.loader.exec_module(_mba)
+
+
 def chrome_filter(windows, in_label, out_label, dots_index, style, font):
     """Draw the title bar (drawbox), traffic-light dots (overlay of input
     [dots_index]) and title (drawtext, textfile) on `in_label` for each chrome
@@ -578,7 +613,7 @@ def chrome_filter(windows, in_label, out_label, dots_index, style, font):
     if not chrome:
         return f"[{in_label}]null[{out_label}]"
     m = chrome_metrics(BAR_H)
-    fontclause = f"fontfile='{_esc_path(font)}':" if font else ""
+    fontclause = f"fontfile='{_mba._esc_path(font)}':" if font else ""
     parts = [f"[{dots_index}:v]split={len(chrome)}" + "".join(f"[dots{i}]" for i in range(len(chrome)))]
     src = in_label
     for i, w in enumerate(chrome):
@@ -587,7 +622,7 @@ def chrome_filter(windows, in_label, out_label, dots_index, style, font):
         bar = (f"drawbox=x={x}:y={y}:w={ww}:h={BAR_H}:color={style['bar_bg']}:t=fill,"
                f"drawbox=x={x}:y={y + BAR_H - 2}:w={ww}:h=2:color={style['rule']}:t=fill")
         dots_x, dots_y = x + m["pad"], y + (BAR_H - m["strip_h"]) // 2
-        title = (f"drawtext={fontclause}textfile='{_esc_path(w['title_file'])}':"
+        title = (f"drawtext={fontclause}textfile='{_mba._esc_path(w['title_file'])}':"
                  f"x={x + m['title_x']}:y={y}+({BAR_H}-text_h)/2:"
                  f"fontsize={m['title_fs']}:fontcolor={style['fg']}")
         parts.append(f"[{src}]{bar}[chrb{i}]")
@@ -600,7 +635,7 @@ def chrome_filter(windows, in_label, out_label, dots_index, style, font):
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python tests/test_make_diorama.py -v`
-Expected: PASS.
+Expected: PASS. The existing `TestCanvasFilter` fixtures (`WINDOWS`, no `chrome`) keep `overlay=200:200` / `overlay=2300:1100` — the `BAR_H` offset only applies to chrome windows, so leave those fixtures chrome-free.
 
 - [ ] **Step 5: Commit**
 
@@ -618,21 +653,14 @@ git commit -m "feat(diorama-chrome): chrome_filter (bar+dots+title) + clip BAR_H
 
 **Context:** Orchestration glue — no new unit test (verified by the smoke in Task 8 + a manual isolation run). It: computes window `H` including `BAR_H` for chrome windows; when chrome windows exist, generates the dots PNG (via the rawvideo pipe), writes each chrome window's title to a UTF-8 textfile, adds the dots PNG as the last `-i` input, and inserts `chrome_filter` between the canvas composite and the trim.
 
-- [ ] **Step 1: Add the make-before-after import** (top of `main()`, beside the existing importlib loads of `normalize-clip`):
-
-```python
-    mba = importlib.util.spec_from_file_location(
-        "make_before_after", os.path.join(os.path.dirname(__file__), "make-before-after.py"))
-    mbamod = importlib.util.module_from_spec(mba); mba.loader.exec_module(mbamod)
-```
+- [ ] **Step 1: Use the module-level `_mba`** — Task 6 already loaded `make-before-after` at module level (`_mba`), so `main()` does NOT re-import it; it calls `_mba.find_font()` / `_mba.ascii_label()` directly (Step 3). Nothing to add here beyond confirming `_mba` exists.
 
 - [ ] **Step 2: Include `BAR_H` in chrome windows' height** — in the per-window height loop, change:
 
 ```python
     for i, w in enumerate(windows):
         cw, ch = (int(v) for v in _probe(w["clip"], "stream=width,height").split(","))
-        clip_h = round(w["w"] * ch / cw)
-        w["h"] = clip_h + (BAR_H if w.get("chrome") else 0)
+        w["h"] = window_h(w["w"], cw, ch, w.get("chrome"))   # incl. BAR_H for chrome windows
         win_clip = os.path.join(workdir, f".diorama-win-{i}.mp4")
         shutil.copyfile(w["clip"], win_clip)
         normmod.main(["normalize-clip.py", win_clip, str(dur)])  # pin the COPY to DUR
@@ -648,11 +676,11 @@ git commit -m "feat(diorama-chrome): chrome_filter (bar+dots+title) + clip BAR_H
         cs = plan["chrome_style"]
         style = {"bar_bg": _ffcolor(cs["bar_bg"]), "rule": _ffcolor(cs["rule"]),
                  "fg": _ffcolor(cs["fg"])}
-        font = mbamod.find_font()
+        font = _mba.find_font()
         for w in chrome_wins:                       # one UTF-8 textfile per chrome title
             tf = os.path.join(workdir, f".diorama-title-{w['id']}.txt")
             with open(tf, "w", encoding="utf-8", newline="") as f:
-                f.write(mbamod.ascii_label(str(w.get("title", w["id"]))))
+                f.write(_mba.ascii_label(str(w.get("title", w["id"]))))
             w["title_file"] = tf
         dots_png = os.path.join(workdir, ".diorama-dots.png")
         m = chrome_metrics(BAR_H)
@@ -684,7 +712,7 @@ git commit -m "feat(diorama-chrome): chrome_filter (bar+dots+title) + clip BAR_H
         "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", canvas_mp4])
 ```
 
-- [ ] **Step 5: Manual isolation check** — generate two source clips + a chrome plan and build, confirming a bar renders and the output is 1920x1080:
+- [ ] **Step 5: Manual isolation check** — generate two source clips + a chrome plan and build, confirming a bar renders and the output is 1920x1080. (A hand-written plan's `chrome_style` may use `0x...` or `#...` form — `_ffcolor` normalizes both; the production path passes raw `#RRGGBB` from the brand palette.)
 
 ```bash
 mkdir -p /c/tmp/chrome-test && cd /c/tmp/chrome-test
