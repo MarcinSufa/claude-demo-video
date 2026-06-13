@@ -111,7 +111,7 @@ class TestMascotCacheLayers(unittest.TestCase):
             self.assertNotEqual(k1, scene_cache.overlay_key(clip, mascot, t))
 
     def test_version_bumped(self):
-        self.assertEqual(scene_cache.VERSION, "2")
+        self.assertEqual(scene_cache.VERSION, "3")
 
 
 if __name__ == "__main__":
