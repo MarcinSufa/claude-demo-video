@@ -251,6 +251,8 @@ end_cards:
 #   enabled: true
 #   position: bottom-right  # bottom-left | top-right | top-left
 #   scale: 1.0
+#   shade: true             # procedural depth: rim light + shadow + eye catch-lights
+#                           # (no art rework; works on any flat character with body/eyes slots)
 # Per-scene override inside scenes.sequence items:
 #   - type: before_after
 #     mascot: { before: panic, after: celebrate }

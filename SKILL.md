@@ -344,7 +344,15 @@ mascot:
   enabled: true
   position: bottom-right  # bottom-left | top-right | top-left
   scale: 1.0
+  shade: true             # optional procedural depth (see below)
 ```
+
+**Procedural shading (`shade: true`).** A flat character gets dimensionality at
+build time with no art rework: `shade_sprite.py` adds a lighter rim where light
+hits the top of the silhouette, a darker rim along the bottom, and a near-white
+catch-light in each eye. It's deterministic, derives the new colours from the
+character's own body colour, and works on any character that has `body` and
+`eyes` palette slots. Off by default (flat fills); opt in per project.
 
 The mascot's emotion is inferred from the scene type by default (e.g. `type` for terminal, `idle` for browser captures). Override per scene using the dict form in `scenes.sequence`:
 
