@@ -344,8 +344,13 @@ mascot:
   enabled: true
   position: bottom-right  # bottom-left | top-right | top-left
   scale: 1.0
-  shade: true             # optional procedural depth (see below)
+  shade: true             # CHOICE: true = painted depth · false/omit = flat (default). See below.
 ```
+
+**Shaded or flat — your choice.** The `shade` flag is the single switch between
+the two looks: leave it off (or `false`) for the original flat fills, set `true`
+for procedural depth. Default is flat, so existing builds are unchanged; flipping
+one line lets you compare.
 
 **Procedural shading (`shade: true`).** A flat character gets dimensionality at
 build time with no art rework: `shade_sprite.py` (shader v2) adds a *hue-shifted
@@ -362,6 +367,51 @@ from the character's own body colour (near-greys ramp by value only, no tint), a
 works on any character that has `body` and `eyes` palette slots. The dither is on
 by default (pass `--no-dither` to `shade_sprite.py` to disable). Off by default
 (flat fills); opt in per project.
+
+### Art sources (`mascot.source`)
+
+The mascot art can come from three places — all converge on the same rendered
+frame contract (`<dir>/<emotion>/f_%03d.png` + `mascot-meta.json`), so the
+overlay, keyframes, caching, and motion work identically whatever the source:
+
+- **`grid`** (default) — a hand-authored pixel-grid `mascot.json` (a roster
+  character or your own), optionally `shade`d, rendered by `render-mascot.py`.
+  Fully free, deterministic, editable, brand-remappable.
+- **`sheet`** — import an external sprite sheet + Aseprite-style frames JSON
+  (the format libresprite, Aseprite, and pixel-art plugins export). Lets a human
+  artist or another tool author the sprites; `import-spritesheet.py` slices the
+  sheet by its `frameTags` into per-emotion frames. Tag your animations with the
+  emotion names (`idle`, `walk`, `panic`, …).
+
+  ```yaml
+  mascot:
+    source: sheet
+    sheet: mascot-sheet.png    # next to brand.yaml
+    tags: mascot-sheet.json    # Aseprite frames+frameTags export
+  ```
+
+- **`pixellab`** — generate the character and its cycles with the PixelLab API
+  (AI pixel-art, **paid**). The API key is read from the `PIXELLAB_API_KEY`
+  environment variable, or from `~/.pixellab/credentials.json`
+  (`{"api_key": "..."}`); without a key the build warns and proceeds mascot-less.
+  `gen-pixellab.py` creates a base character from the prompt, animates it per
+  emotion, and writes the frames.
+
+  ```yaml
+  mascot:
+    source: pixellab
+    prompt: "a coral kangaroo with a cream pouch, friendly"
+    n_frames: 6
+  ```
+
+  Run `python gen-pixellab.py <out> --prompt "…" --dry-run` to exercise the
+  plumbing without a key or spend.
+
+Whichever source you use, ideally cover the full emotion set
+(idle/type/walk/panic/celebrate/sleep/point/enter/exit). Any emotion a sheet or
+PixelLab run doesn't provide is **filled from `idle`** at build time (with a
+warning) so the overlay never hard-fails — that emotion simply renders as idle.
+`idle` itself must be present.
 
 The mascot's emotion is inferred from the scene type by default (e.g. `type` for terminal, `idle` for browser captures). Override per scene using the dict form in `scenes.sequence`:
 
