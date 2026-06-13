@@ -101,20 +101,27 @@ def diorama_timeline(keyframes, duration):
     return segs
 
 
-def resolve_canvas_positions(timeline, windows, sprite_wh):
-    """Per-segment canvas anchors for the mascot. Static segs carry at_window+anchor;
-    move segs carry move.{from,to}_{window,anchor}. Returns the positions list
-    overlay-mascot.build_overlay_cmd expects."""
+def _clamp_xy(xy, sprite_wh, canvas):
+    """Keep a sprite anchor inside the canvas: x in [0, W-sw], y in [0, H-sh]."""
+    x, y = xy
+    sw, sh = sprite_wh
+    return (min(max(0, x), canvas["width"] - sw),
+            min(max(0, y), canvas["height"] - sh))
+
+
+def resolve_canvas_positions(timeline, windows, sprite_wh, canvas):
+    """Per-segment canvas anchors for the mascot, clamped into the canvas. Static
+    segs carry at_window+anchor; move segs carry move.{from,to}_{window,anchor}."""
     by_id = {w["id"]: w for w in windows}
     sw, sh = sprite_wh
     out = []
     for seg in timeline:
         if "move" in seg:
             mv = seg["move"]
-            out.append((window_anchor(by_id[mv["from_window"]], mv["from_anchor"], sw, sh),
-                        window_anchor(by_id[mv["to_window"]], mv["to_anchor"], sw, sh)))
+            out.append((_clamp_xy(window_anchor(by_id[mv["from_window"]], mv["from_anchor"], sw, sh), sprite_wh, canvas),
+                        _clamp_xy(window_anchor(by_id[mv["to_window"]], mv["to_anchor"], sw, sh), sprite_wh, canvas)))
         else:
-            out.append(window_anchor(by_id[seg["at_window"]], seg["anchor"], sw, sh))
+            out.append(_clamp_xy(window_anchor(by_id[seg["at_window"]], seg["anchor"], sw, sh), sprite_wh, canvas))
     return out
 
 
@@ -178,7 +185,7 @@ def main():
         sprite_wh = tuple(int(v) for v in _probe(
             os.path.join(m["frames_dir"], "idle", "f_001.png"), "stream=width,height").split(","))
         timeline = diorama_timeline(m["keyframes"], dur)            # keyframes -> segments+walks
-        positions = resolve_canvas_positions(timeline, windows, sprite_wh)
+        positions = resolve_canvas_positions(timeline, windows, sprite_wh, canvas)
         cmd = ovl.build_overlay_cmd(canvas_mp4, os.path.join(workdir, ".diorama-m.mp4"),
             m["frames_dir"], timeline, positions, m["fps"], 1.0)
         if cmd:

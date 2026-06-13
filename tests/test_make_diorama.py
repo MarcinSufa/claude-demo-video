@@ -93,20 +93,31 @@ class TestDioramaTimeline(unittest.TestCase):
 class TestCanvasPositions(unittest.TestCase):
     WINS = [{"id": "a", "x": 100, "y": 200, "w": 1280, "h": 720},
             {"id": "b", "x": 2300, "y": 1100, "w": 1280, "h": 720}]
+    CANVAS = {"width": 3840, "height": 2160}
 
     def test_static_segment_uses_window_anchor(self):
-        tl = [{"at": 0, "until": 3, "emotion": "idle",
-               "at_window": "a", "anchor": "top"}]
-        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140))
+        tl = [{"at": 0, "until": 3, "emotion": "idle", "at_window": "a", "anchor": "top"}]
+        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140), self.CANVAS)
         self.assertEqual(pos[0], (100 + (1280 - 160) // 2, 200 - 140))
 
     def test_move_segment_resolves_both_windows(self):
         tl = [{"at": 0, "until": 0.8, "emotion": "walk",
                "move": {"from_window": "a", "from_anchor": "top",
                         "to_window": "b", "to_anchor": "beside"}}]
-        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140))
+        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140), self.CANVAS)
         self.assertEqual(pos[0][0], (100 + (1280 - 160) // 2, 200 - 140))
         self.assertEqual(pos[0][1], (2300 + 1280 + 8, 1100 + (720 - 140) // 2))
+
+    def test_anchor_clamped_into_canvas(self):
+        # window 'b' is at the right/bottom edge; a 'beside' anchor would land the
+        # sprite off-canvas — it must clamp to within [0, canvas - sprite]
+        small = {"width": 3300, "height": 1300}
+        tl = [{"at": 0, "until": 3, "emotion": "point", "at_window": "b", "anchor": "beside"}]
+        x, y = md.resolve_canvas_positions(tl, self.WINS, (160, 140), small)[0]
+        self.assertLessEqual(x + 160, small["width"])
+        self.assertLessEqual(y + 140, small["height"])
+        self.assertGreaterEqual(x, 0)
+        self.assertGreaterEqual(y, 0)
 
 
 if __name__ == "__main__":
