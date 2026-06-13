@@ -55,7 +55,7 @@ python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyam
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
@@ -82,31 +82,61 @@ if [ -d "$ROOT/mockups" ]; then
   cp "$ROOT"/mockups/*.html . 2>/dev/null || true
 fi
 
-# Mascot: resolve mascot.json (next to brand.yaml) and render sprite frames.
+# Mascot: resolve the art SOURCE into sprite frames in ./mascot. Three sources,
+# all converging on the same frames_dir contract the overlay reads:
+#   grid (default) — hand-authored pixel-grid mascot.json -> (optional shade) -> render
+#   sheet          — import an external sprite sheet + Aseprite-style frames JSON
+#   pixellab       — generate frames via the PixelLab API (paid; needs PIXELLAB_API_KEY)
 MASCOT_ENABLED=$(python -c "import json;m=json.load(open('config.json')).get('mascot',{});print(1 if m.get('enabled', bool(m)) else 0)")
 if [ "$MASCOT_ENABLED" = "1" ]; then
-  if [ -f "$ROOT/mascot.json" ]; then
-    cp "$ROOT/mascot.json" mascot.json
-  else
-    CHAR=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('character','octopus'))")
-    if [ -f "$SKILL_ASSETS/mascots/$CHAR.json" ]; then
-      cp "$SKILL_ASSETS/mascots/$CHAR.json" mascot.json
+  MASCOT_SOURCE=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('source','grid'))")
+  if [ "$MASCOT_SOURCE" = "sheet" ]; then
+    SHEET=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('sheet',''))")
+    TAGS=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('tags',''))")
+    if [ -f "$ROOT/$SHEET" ] && [ -f "$ROOT/$TAGS" ]; then
+      python import-spritesheet.py "$ROOT/$SHEET" "$ROOT/$TAGS" mascot \
+        && echo "  mascot: imported sprite sheet ($SHEET)" \
+        || { echo "WARNING: sprite-sheet import failed - building mascot-less"; rm -rf mascot; }
     else
-      echo "WARNING: mascot character '$CHAR' not found and no mascot.json - building mascot-less"
+      echo "WARNING: mascot.source=sheet but sheet/tags not found ($SHEET / $TAGS) - building mascot-less"
     fi
-  fi
-  if [ -f mascot.json ]; then
-    # Optional procedural shading (mascot.shade: true) — adds rim light + shadow
-    # + eye catch-lights to a flat character, no art rework. In-place, reproducible.
-    MASCOT_SHADE=$(python -c "import json;print(1 if json.load(open('config.json')).get('mascot',{}).get('shade') else 0)")
-    if [ "$MASCOT_SHADE" = "1" ]; then
-      python shade_sprite.py mascot.json mascot.shaded.json && mv -f mascot.shaded.json mascot.json \
-        && echo "  mascot: procedural shading applied" \
-        || echo "WARNING: mascot shading failed - using flat mascot"
+  elif [ "$MASCOT_SOURCE" = "pixellab" ]; then
+    PROMPT=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('prompt',''))")
+    NF=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('n_frames',6))")
+    if [ -z "$PIXELLAB_API_KEY" ]; then
+      echo "WARNING: mascot.source=pixellab but PIXELLAB_API_KEY unset - building mascot-less"
+    elif [ -n "$PROMPT" ]; then
+      python gen-pixellab.py mascot --prompt "$PROMPT" --n-frames "$NF" \
+        && echo "  mascot: generated via PixelLab" \
+        || { echo "WARNING: pixellab generation failed - building mascot-less"; rm -rf mascot; }
+    else
+      echo "WARNING: mascot.source=pixellab but no mascot.prompt - building mascot-less"
     fi
-    MASCOT_SCALE=$(python -c "import json;s=json.load(open('config.json')).get('mascot',{}).get('scale');print(s if s else '')")
-    python render-mascot.py mascot.json mascot ${MASCOT_SCALE:+--scale "$MASCOT_SCALE"} \
-      || { echo "WARNING: mascot render failed - building mascot-less"; rm -rf mascot mascot.json; }
+  else
+    # grid (default): hand-authored pixel-grid mascot.json -> (optional shade) -> render
+    if [ -f "$ROOT/mascot.json" ]; then
+      cp "$ROOT/mascot.json" mascot.json
+    else
+      CHAR=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('character','octopus'))")
+      if [ -f "$SKILL_ASSETS/mascots/$CHAR.json" ]; then
+        cp "$SKILL_ASSETS/mascots/$CHAR.json" mascot.json
+      else
+        echo "WARNING: mascot character '$CHAR' not found and no mascot.json - building mascot-less"
+      fi
+    fi
+    if [ -f mascot.json ]; then
+      # Optional procedural shading (mascot.shade: true) — rim light + shadow +
+      # eye catch-lights on a flat character, no art rework. In-place, reproducible.
+      MASCOT_SHADE=$(python -c "import json;print(1 if json.load(open('config.json')).get('mascot',{}).get('shade') else 0)")
+      if [ "$MASCOT_SHADE" = "1" ]; then
+        python shade_sprite.py mascot.json mascot.shaded.json && mv -f mascot.shaded.json mascot.json \
+          && echo "  mascot: procedural shading applied" \
+          || echo "WARNING: mascot shading failed - using flat mascot"
+      fi
+      MASCOT_SCALE=$(python -c "import json;s=json.load(open('config.json')).get('mascot',{}).get('scale');print(s if s else '')")
+      python render-mascot.py mascot.json mascot ${MASCOT_SCALE:+--scale "$MASCOT_SCALE"} \
+        || { echo "WARNING: mascot render failed - building mascot-less"; rm -rf mascot mascot.json; }
+    fi
   fi
 fi
 

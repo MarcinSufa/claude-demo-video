@@ -363,6 +363,47 @@ works on any character that has `body` and `eyes` palette slots. The dither is o
 by default (pass `--no-dither` to `shade_sprite.py` to disable). Off by default
 (flat fills); opt in per project.
 
+### Art sources (`mascot.source`)
+
+The mascot art can come from three places — all converge on the same rendered
+frame contract (`<dir>/<emotion>/f_%03d.png` + `mascot-meta.json`), so the
+overlay, keyframes, caching, and motion work identically whatever the source:
+
+- **`grid`** (default) — a hand-authored pixel-grid `mascot.json` (a roster
+  character or your own), optionally `shade`d, rendered by `render-mascot.py`.
+  Fully free, deterministic, editable, brand-remappable.
+- **`sheet`** — import an external sprite sheet + Aseprite-style frames JSON
+  (the format libresprite, Aseprite, and pixel-art plugins export). Lets a human
+  artist or another tool author the sprites; `import-spritesheet.py` slices the
+  sheet by its `frameTags` into per-emotion frames. Tag your animations with the
+  emotion names (`idle`, `walk`, `panic`, …).
+
+  ```yaml
+  mascot:
+    source: sheet
+    sheet: mascot-sheet.png    # next to brand.yaml
+    tags: mascot-sheet.json    # Aseprite frames+frameTags export
+  ```
+
+- **`pixellab`** — generate the character and its cycles with the PixelLab API
+  (AI pixel-art, **paid**). Needs `PIXELLAB_API_KEY` in the environment; without
+  it the build warns and proceeds mascot-less. `gen-pixellab.py` creates a base
+  character from the prompt, animates it per emotion, and writes the frames.
+
+  ```yaml
+  mascot:
+    source: pixellab
+    prompt: "a coral kangaroo with a cream pouch, friendly"
+    n_frames: 6
+  ```
+
+  Run `python gen-pixellab.py <out> --prompt "…" --dry-run` to exercise the
+  plumbing without a key or spend.
+
+Whichever source you use, the sprites should cover the emotions your scenes
+reference (idle/type/walk/panic/celebrate/sleep/point/enter/exit) — a missing
+emotion falls back to mascot-less for that scene.
+
 The mascot's emotion is inferred from the scene type by default (e.g. `type` for terminal, `idle` for browser captures). Override per scene using the dict form in `scenes.sequence`:
 
 ```yaml

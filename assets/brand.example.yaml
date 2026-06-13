@@ -256,6 +256,14 @@ end_cards:
 #                           # dither + eye catch-lights. Flat fills look painted,
 #                           # not just dimmed. No art rework; works on any flat
 #                           # character with body/eyes slots. (Dither on by default.)
+# Art source (mascot.source) — where the sprites come from. Default "grid".
+#   source: grid            # hand-authored pixel-grid mascot.json (default; the block above)
+#   # source: sheet         # import an external sprite sheet + Aseprite-style frames JSON:
+#   #   sheet: mascot-sheet.png
+#   #   tags:  mascot-sheet.json   # frames + frameTags (tag names = emotion names)
+#   # source: pixellab      # AI-generate via the PixelLab API (PAID; needs PIXELLAB_API_KEY):
+#   #   prompt: "a coral kangaroo with a cream pouch, friendly"
+#   #   n_frames: 6
 # Per-scene override inside scenes.sequence items:
 #   - type: before_after
 #     mascot: { before: panic, after: celebrate }
