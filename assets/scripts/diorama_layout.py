@@ -21,3 +21,58 @@ def window_anchor(win, anchor, sprite_w, sprite_h):
     if anchor == "on":
         return wx + (ww - sprite_w) // 2, wy + (wh - sprite_h) // 2
     raise ValueError(f"unknown mascot anchor '{anchor}' (top|beside|on)")
+
+
+def _bbox(rects):
+    x0 = min(r["x"] for r in rects); y0 = min(r["y"] for r in rects)
+    x1 = max(r["x"] + r["w"] for r in rects); y1 = max(r["y"] + r["h"] for r in rects)
+    return x0, y0, x1 - x0, y1 - y0
+
+
+def focus_rect(stop, windows, canvas, out_aspect=16 / 9, mascot_xy=None):
+    """A camera stop -> viewport rect (x, y, w, h) on the canvas: out_aspect-locked,
+    span = canvas_width/zoom, centred on the focus, clamped within the canvas."""
+    cw_canvas, ch_canvas = canvas["width"], canvas["height"]
+    focus = stop["focus"]
+    if focus == "all":
+        bx, by, bw, bh = _bbox(list(windows.values()))
+        cx, cy = bx + bw / 2, by + bh / 2
+    elif focus == "mascot":
+        cx, cy = mascot_xy if mascot_xy else (cw_canvas / 2, ch_canvas / 2)
+    else:
+        w = windows[focus]
+        cx, cy = w["x"] + w["w"] / 2, w["y"] + w["h"] / 2
+    zoom = float(stop.get("zoom", 1.0)) or 1.0
+    vw = min(cw_canvas, cw_canvas / zoom)
+    vh = vw / out_aspect
+    if vh > ch_canvas:                       # never taller than the canvas
+        vh = ch_canvas; vw = vh * out_aspect
+    x = min(max(0, cx - vw / 2), cw_canvas - vw)
+    y = min(max(0, cy - vh / 2), ch_canvas - vh)
+    return round(x), round(y), round(vw), round(vh)
+
+
+def camera_timeline(stops, windows, canvas, out_aspect=16 / 9):
+    """Camera stops -> [(start, end, from_vp, to_vp), ...] and total seconds.
+    `transition` (seconds, into a stop) eases the viewport; `hold` holds it."""
+    segs, t = [], 0.0
+    prev = focus_rect(stops[0], windows, canvas, out_aspect)
+    for i, stop in enumerate(stops):
+        vp = focus_rect(stop, windows, canvas, out_aspect)
+        trans = float(stop.get("transition", 0.0)) if i > 0 else 0.0
+        if trans > 0:
+            segs.append((t, t + trans, prev, vp)); t += trans
+        hold = float(stop.get("hold", 2.0))
+        segs.append((t, t + hold, vp, vp)); t += hold
+        prev = vp
+    return segs, t
+
+
+def viewport_at(segs, t):
+    """Eased (smoothstep) viewport at time t; holds the last viewport past the end."""
+    for (s, e, a, b) in segs:
+        if s <= t <= e:
+            p = 0.0 if e == s else (t - s) / (e - s)
+            pe = p * p * (3 - 2 * p)
+            return tuple(round(a[k] + (b[k] - a[k]) * pe) for k in range(4))
+    return segs[-1][3]
