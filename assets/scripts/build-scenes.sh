@@ -101,6 +101,42 @@ while IFS=$'\t' read -r id type mp4 extra <&3; do
       done
       python make-before-after.py ".scene-$id.json" "$mp4"
       rm -f ".scene-$id.json" ".scene-$id-before.json" ".scene-$id-after.json" ;;
+    diorama)
+      # N windows composited on a big canvas + an eased camera tour + the mascot
+      # moving window-to-window (composited in canvas space by make-diorama, NOT
+      # the corner overlay phase). Record any url windows like before_after halves.
+      echo "$extra" > ".scene-$id.json"
+      python - "$id" <<'PY'
+import json, os, subprocess, sys
+sid = sys.argv[1]
+e = json.load(open(f".scene-{sid}.json"))
+windows = []
+for w in e["windows"]:
+    win = {"id": w["id"], "x": w["x"], "y": w["y"], "w": w["w"]}
+    if "capture" in w:                       # a live url window — record it now
+        cap = w["capture"]
+        json.dump(cap, open(f".scene-{sid}-{w['id']}.json", "w"))
+        subprocess.check_call(["node", "record-browser.mjs", f".scene-{sid}-{w['id']}.json"])
+        subprocess.check_call(["python", "cut-clip.py", cap["output"]])  # focus (no-op if unused)
+        win["clip"] = cap["output"]
+    else:                                    # a pre-rendered source clip
+        win["clip"] = w["source"]
+    windows.append(win)
+plan = {"canvas": e["canvas"], "camera": e["camera"], "windows": windows, "fps": 30,
+        "backdrop": (e.get("canvas") or {}).get("backdrop") or "color=c=0x0a0705"}
+if e.get("duration") is not None:            # else make-diorama uses the camera-tour length
+    plan["duration"] = e["duration"]
+# Mascot frames render into ./mascot from the GLOBAL mascot.enabled (build.sh),
+# independent of this scene's suppressed mascot_plan — attach when both present.
+if e.get("mascot") and os.path.isdir("mascot"):
+    fps = json.load(open("mascot/mascot-meta.json")).get("fps", 12)
+    plan["mascot"] = {"keyframes": e["mascot"]["keyframes"], "frames_dir": "mascot", "fps": fps}
+else:
+    plan["mascot"] = None
+json.dump(plan, open(f".diorama-{sid}.json", "w"))
+PY
+      python make-diorama.py ".diorama-$id.json" "$mp4"
+      rm -f ".scene-$id.json" ".scene-$id"-*.json ".diorama-$id.json" ;;
     *)
       echo "  unknown scene type: $type"; exit 1 ;;
   esac

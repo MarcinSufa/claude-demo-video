@@ -84,6 +84,9 @@ def mascot_stub(mascot_cfg, entry, scene_override):
         enabled = False  # off by default on endcards (spec)
     if "enabled" in ov:
         enabled = bool(ov["enabled"])
+    if entry.get("type") == "diorama":
+        enabled = False  # diorama composites its mascot on the canvas (window-relative
+        #                  keyframes) inside make-diorama — never the corner overlay phase
     stub = {
         "enabled": enabled,
         "character": mascot_cfg.get("character", "octopus"),
@@ -235,6 +238,33 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                 else:
                     sys.exit(f"before_after '{role}' needs a path string, 'source', or 'url'")
                 entry[role] = half
+        elif t == "diorama":
+            entry["mp4"] = f"videos/{sid}.mp4"
+            entry["canvas"] = sc["canvas"]
+            entry["camera"] = sc["camera"]
+            entry["windows"] = []
+            for i, win in enumerate(sc["windows"]):
+                w = {"id": win["id"], "x": win["x"], "y": win["y"], "w": win["w"]}
+                if win.get("source"):
+                    w["source"] = resolve_source(win["source"])
+                elif win.get("url"):
+                    w["capture"] = {
+                        "url": win["url"], "output": f"videos/{sid}_{win['id']}.mp4",
+                        "cursor": win.get("cursor", True),
+                        "settle_ms": win.get("settle_ms", 1200), "tail_ms": win.get("tail_ms", 1500),
+                        "viewport": win.get("viewport", {"width": 1280, "height": 720}),
+                        "actions": win.get("actions", []),
+                        "warmup": should_warmup(win["url"], win.get("warmup")),
+                        "auth": bool(win.get("auth", False)), "trim_start_ms": win.get("trim_start_ms"),
+                        "clip": win.get("clip"),
+                    }
+                else:
+                    sys.exit(f"diorama window '{win.get('id')}' needs a source or url")
+                if win.get("chrome"):
+                    w["chrome"] = True; w["title"] = win.get("title", win["id"])
+                entry["windows"].append(w)
+            kf = sorted(sc.get("mascot", {}).get("keyframes", []), key=lambda k: k["at"])
+            entry["mascot"] = {"keyframes": kf} if kf else None
         else:
             sys.exit(f"Unknown custom scene type: {t}")
         # P0-3: optional explicit duration — build-scenes.sh normalizes the clip to

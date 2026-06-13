@@ -18,7 +18,8 @@ import sys
 
 # Bump to invalidate ALL caches when a recorder/normalizer/compositor change makes
 # old clips wrong. v3: overlay-mascot.py eased/arced moves + render feet-anchoring.
-VERSION = "3"
+# v4: diorama scene type (canvas composite + zoompan camera).
+VERSION = "4"
 
 
 def cache_key(entry, dep_files=()):
@@ -91,6 +92,11 @@ def dep_files_for(entry):
             if src:
                 deps.append(src)
         return deps
+    if t == "diorama":
+        # Hash local source-window clips so swapping footage (same path, new
+        # content) recomposes. url/capture windows carry their url/actions in the
+        # entry JSON (already hashed), same as before_after capture halves.
+        return [w["source"] for w in entry.get("windows", []) if w.get("source")]
     return []
 
 

@@ -42,6 +42,17 @@ class CacheKey(unittest.TestCase):
             self.assertNotEqual(k1, k2)
 
 
+class DepFiles(unittest.TestCase):
+    def test_diorama_hashes_local_source_windows_only(self):
+        # local source clips bust the cache on content change; url/capture windows
+        # carry their url+actions in the entry JSON (already hashed), so contribute none
+        entry = {"id": "d1", "type": "diorama", "windows": [
+            {"id": "a", "source": "footage/a.mp4", "x": 0, "y": 0, "w": 1280},
+            {"id": "b", "capture": {"url": "http://x", "output": "videos/d1_b.mp4"},
+             "x": 0, "y": 0, "w": 1280}]}
+        self.assertEqual(scene_cache.dep_files_for(entry), ["footage/a.mp4"])
+
+
 class IsFresh(unittest.TestCase):
     def test_false_when_mp4_missing(self):
         with tempfile.TemporaryDirectory() as d:
@@ -111,7 +122,7 @@ class TestMascotCacheLayers(unittest.TestCase):
             self.assertNotEqual(k1, scene_cache.overlay_key(clip, mascot, t))
 
     def test_version_bumped(self):
-        self.assertEqual(scene_cache.VERSION, "3")
+        self.assertEqual(scene_cache.VERSION, "4")
 
 
 if __name__ == "__main__":
