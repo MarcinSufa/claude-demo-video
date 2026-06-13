@@ -98,3 +98,77 @@ def resolve_canvas_positions(timeline, windows, sprite_wh):
         else:
             out.append(window_anchor(by_id[seg["at_window"]], seg["anchor"], sw, sh))
     return out
+
+
+def _probe(path, entries):
+    out = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", entries, "-of", "csv=p=0", path]).decode().strip()
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("plan_json"); ap.add_argument("out")
+    a = ap.parse_args()
+    with open(a.plan_json, encoding="utf-8") as f:
+        plan = json.load(f)
+    canvas, windows = plan["canvas"], plan["windows"]
+    dur, fps = float(plan["duration"]), int(plan.get("fps", 30))
+    workdir = os.path.dirname(os.path.abspath(a.out)) or "."
+
+    # 1. canvas composite (each window clip normalized to DUR first)
+    import importlib.util
+    nc = importlib.util.spec_from_file_location(
+        "normalize_clip", os.path.join(os.path.dirname(__file__), "normalize-clip.py"))
+    normmod = importlib.util.module_from_spec(nc); nc.loader.exec_module(normmod)
+    backdrop = plan["backdrop"]
+    if backdrop.startswith("color="):
+        # lavfi solid-colour backdrop: synthesize a canvas-sized source for DUR
+        inputs = ["-f", "lavfi", "-i",
+                  f"{backdrop}:s={canvas['width']}x{canvas['height']}:d={dur:.3f}"]
+    else:
+        inputs = ["-i", backdrop]
+    for w in windows:
+        normmod.main(["normalize-clip.py", w["clip"], str(dur)])  # pin each window to DUR
+        inputs += ["-i", w["clip"]]
+    # Fill each window's CANVAS HEIGHT (h) from its clip aspect at the target
+    # width — the layout/camera functions need it; plan-scenes only set x/y/w.
+    for w in windows:
+        cw, ch = (int(v) for v in _probe(w["clip"], "stream=width,height").split(","))
+        w["h"] = round(w["w"] * ch / cw)
+    canvas_mp4 = os.path.join(workdir, ".diorama-canvas.mp4")
+    fc = build_canvas_filter(windows, canvas) + \
+        f";[canvas]trim=duration={dur:.3f},setpts=PTS-STARTPTS[v]"
+    subprocess.check_call(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs,
+        "-filter_complex", fc, "-map", "[v]", "-t", f"{dur:.3f}",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", canvas_mp4])
+
+    # 2. mascot on the canvas (optional)
+    src = canvas_mp4
+    if plan.get("mascot"):
+        from importlib import util as _u
+        om = _u.spec_from_file_location("overlay_mascot",
+            os.path.join(os.path.dirname(__file__), "overlay-mascot.py"))
+        ovl = _u.module_from_spec(om); om.loader.exec_module(ovl)
+        m = plan["mascot"]
+        sprite_wh = tuple(int(v) for v in _probe(
+            os.path.join(m["frames_dir"], "idle", "f_001.png"), "stream=width,height").split(","))
+        timeline = diorama_timeline(m["keyframes"], dur)            # keyframes -> segments+walks
+        positions = resolve_canvas_positions(timeline, windows, sprite_wh)
+        cmd = ovl.build_overlay_cmd(canvas_mp4, os.path.join(workdir, ".diorama-m.mp4"),
+            m["frames_dir"], timeline, positions, m["fps"], 1.0)
+        if cmd:
+            subprocess.check_call(cmd); src = os.path.join(workdir, ".diorama-m.mp4")
+
+    # 3. camera
+    segs, cam_total = camera_timeline(plan["camera"], {w["id"]: w for w in windows}, canvas)
+    cf = build_camera_filter(segs, canvas["width"], canvas["height"], 1920, 1080, fps)
+    subprocess.check_call(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", src,
+        "-filter_complex", cf, "-map", "[vout]", "-r", str(fps),
+        "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart", a.out])
+    print(f"  diorama -> {a.out}")
+
+
+if __name__ == "__main__":
+    main()
