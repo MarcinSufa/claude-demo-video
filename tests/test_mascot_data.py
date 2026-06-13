@@ -110,3 +110,36 @@ class TestKangarooShips(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEnsureEmotionDirs(unittest.TestCase):
+    def _seed(self, d, anims):
+        for anim in anims:
+            os.makedirs(os.path.join(d, anim), exist_ok=True)
+            with open(os.path.join(d, anim, "f_001.png"), "wb") as f:
+                f.write(b"x")
+
+    def test_fills_missing_from_idle(self):
+        from mascot_data import ensure_emotion_dirs, REQUIRED_ANIMATIONS
+        with tempfile.TemporaryDirectory() as d:
+            self._seed(d, ("idle", "walk"))
+            filled, unfillable = ensure_emotion_dirs(d, warn=lambda *a: None)
+            self.assertEqual(unfillable, [])
+            self.assertIn("panic", filled)
+            for anim in REQUIRED_ANIMATIONS:
+                self.assertTrue(os.path.exists(os.path.join(d, anim, "f_001.png")))
+
+    def test_no_idle_reports_unfillable(self):
+        from mascot_data import ensure_emotion_dirs
+        with tempfile.TemporaryDirectory() as d:
+            self._seed(d, ("walk",))
+            filled, unfillable = ensure_emotion_dirs(d, warn=lambda *a: None)
+            self.assertEqual(filled, [])
+            self.assertIn("idle", unfillable)
+
+    def test_complete_set_is_noop(self):
+        from mascot_data import ensure_emotion_dirs, REQUIRED_ANIMATIONS
+        with tempfile.TemporaryDirectory() as d:
+            self._seed(d, REQUIRED_ANIMATIONS)
+            filled, unfillable = ensure_emotion_dirs(d, warn=lambda *a: None)
+            self.assertEqual((filled, unfillable), ([], []))

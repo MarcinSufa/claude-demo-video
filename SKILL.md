@@ -391,9 +391,11 @@ overlay, keyframes, caching, and motion work identically whatever the source:
   ```
 
 - **`pixellab`** — generate the character and its cycles with the PixelLab API
-  (AI pixel-art, **paid**). Needs `PIXELLAB_API_KEY` in the environment; without
-  it the build warns and proceeds mascot-less. `gen-pixellab.py` creates a base
-  character from the prompt, animates it per emotion, and writes the frames.
+  (AI pixel-art, **paid**). The API key is read from the `PIXELLAB_API_KEY`
+  environment variable, or from `~/.pixellab/credentials.json`
+  (`{"api_key": "..."}`); without a key the build warns and proceeds mascot-less.
+  `gen-pixellab.py` creates a base character from the prompt, animates it per
+  emotion, and writes the frames.
 
   ```yaml
   mascot:
@@ -405,9 +407,11 @@ overlay, keyframes, caching, and motion work identically whatever the source:
   Run `python gen-pixellab.py <out> --prompt "…" --dry-run` to exercise the
   plumbing without a key or spend.
 
-Whichever source you use, the sprites should cover the emotions your scenes
-reference (idle/type/walk/panic/celebrate/sleep/point/enter/exit) — a missing
-emotion falls back to mascot-less for that scene.
+Whichever source you use, ideally cover the full emotion set
+(idle/type/walk/panic/celebrate/sleep/point/enter/exit). Any emotion a sheet or
+PixelLab run doesn't provide is **filled from `idle`** at build time (with a
+warning) so the overlay never hard-fails — that emotion simply renders as idle.
+`idle` itself must be present.
 
 The mascot's emotion is inferred from the scene type by default (e.g. `type` for terminal, `idle` for browser captures). Override per scene using the dict form in `scenes.sequence`:
 

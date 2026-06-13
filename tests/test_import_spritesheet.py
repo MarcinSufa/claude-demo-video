@@ -56,3 +56,12 @@ class TestParse(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDuplicateTag(unittest.TestCase):
+    def test_duplicate_tag_last_wins(self):
+        plan = isp.parse_sheet_plan(doc(FR, [
+            {"name": "idle", "from": 0, "to": 0},
+            {"name": "idle", "from": 2, "to": 2}]))
+        self.assertEqual(len(plan["anims"]["idle"]), 1)
+        self.assertEqual(plan["anims"]["idle"][0], (32, 0, 16, 16))  # second tag wins

@@ -17,6 +17,9 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mascot_data import ensure_emotion_dirs  # noqa: E402
+
 
 def _frames_list(doc):
     """Normalise Aseprite frames (array or hash) to an ordered list of frame dicts."""
@@ -47,6 +50,8 @@ def parse_sheet_plan(doc, fps_override=None, name=None):
         a, b = t["from"], t["to"]
         if a < 0 or b >= len(frames) or a > b:
             raise ValueError(f"tag '{t.get('name')}' range {a}..{b} out of bounds (frames={len(frames)})")
+        if t["name"] in anims:
+            print(f"  WARNING: duplicate frameTag '{t['name']}' — last one wins", file=sys.stderr)
         anims[t["name"]] = [rect(frames[i]) for i in range(a, b + 1)]
         if first_dur is None:
             first_dur = frames[a].get("duration", 0)
@@ -88,6 +93,9 @@ def main():
         for i, rect in enumerate(rects, 1):
             _crop(a.sheet, rect, os.path.join(d, f"f_{i:03d}.png"))
         print(f"  import {anim}: {len(rects)} frames")
+    # external sheets may not tag every emotion the scenes use — fill the gaps
+    # from idle so the overlay never hard-fails on a missing emotion dir.
+    ensure_emotion_dirs(a.out_dir)
     with open(os.path.join(a.out_dir, "mascot-meta.json"), "w", encoding="utf-8") as f:
         json.dump({"fps": plan["fps"], "name": plan["name"]}, f)
     print(f"  imported -> {a.out_dir} (fps {plan['fps']})")

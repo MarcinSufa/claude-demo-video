@@ -9,9 +9,11 @@ and import-spritesheet.py.
   PIXELLAB_API_KEY=... python gen-pixellab.py <out_dir> --prompt "a coral kangaroo, cream pouch" \
        [--actions idle,type,walk,panic,celebrate,sleep,point,enter,exit] [--n-frames 6] [--fps 7] [--dry-run]
 
-Auth: Bearer PIXELLAB_API_KEY. Calls are paid (response carries usage.usd);
-GET /balance is checked first. --dry-run writes flat placeholder frames so the
-build wiring can be exercised without a key or spend. stdlib only (urllib).
+Auth (Bearer): the key is read from the PIXELLAB_API_KEY env var, or failing
+that from ~/.pixellab/credentials.json ({"api_key": "..."}). Calls are paid
+(response carries usage.usd); GET /balance is checked first. --dry-run writes
+flat placeholder frames so the build wiring can be exercised without a key or
+spend. stdlib only (urllib).
 """
 import argparse
 import base64
@@ -20,6 +22,9 @@ import os
 import sys
 import urllib.error
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mascot_data import ensure_emotion_dirs  # noqa: E402
 
 BASE = "https://api.pixellab.ai/v1"
 
@@ -35,6 +40,22 @@ DEFAULT_ACTIONS = {
     "enter": "jumping into frame from below",
     "exit": "jumping away out of frame",
 }
+
+
+def _load_key():
+    """Resolve the API key: PIXELLAB_API_KEY env var first, then a credentials
+    file at ~/.pixellab/credentials.json ({"api_key": "..."}). Returns None if
+    neither is set."""
+    key = os.environ.get("PIXELLAB_API_KEY")
+    if key:
+        return key.strip()
+    cred = os.path.join(os.path.expanduser("~"), ".pixellab", "credentials.json")
+    try:
+        with open(cred, encoding="utf-8") as f:
+            data = json.load(f)
+        return (data.get("api_key") or data.get("token") or "").strip() or None
+    except (OSError, ValueError):
+        return None
 
 
 def _post(path, payload, key):
@@ -79,7 +100,9 @@ def main():
     ap.add_argument("--actions", default=",".join(DEFAULT_ACTIONS))
     ap.add_argument("--n-frames", type=int, default=6)
     ap.add_argument("--fps", type=float, default=7.0)
-    ap.add_argument("--size", type=int, default=64)
+    ap.add_argument("--size", type=int, default=64,
+                    help="sprite size for base + animation (PixelLab animate-with-text "
+                         "currently supports 64; other sizes may be rejected by the API)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     actions = [x.strip() for x in a.actions.split(",") if x.strip()]
@@ -101,14 +124,17 @@ def main():
     if a.dry_run:
         for anim in actions:
             write_anim(anim)
+        ensure_emotion_dirs(a.out_dir)  # fill any emotion the scenes need from idle
         with open(os.path.join(a.out_dir, "mascot-meta.json"), "w", encoding="utf-8") as f:
             json.dump({"fps": a.fps, "name": "pixellab-dry"}, f)
         print(f"  (dry-run) -> {a.out_dir}")
         return
 
-    key = os.environ.get("PIXELLAB_API_KEY")
+    key = _load_key()
     if not key:
-        sys.exit("PIXELLAB_API_KEY not set — get one at pixellab.ai (paid). Or use --dry-run.")
+        sys.exit("No PixelLab key. Set PIXELLAB_API_KEY env var, or save "
+                 "~/.pixellab/credentials.json = {\"api_key\": \"...\"}. "
+                 "Get one at pixellab.ai (paid). Or use --dry-run.")
     try:
         bal = _get("/balance", key)
         print(f"  pixellab balance: {bal}")
@@ -124,10 +150,11 @@ def main():
             res = _post("/animate-with-text", {
                 "description": a.prompt, "action": action_prompt,
                 "reference_image": {"type": "base64", "base64": ref},
-                "image_size": {"width": 64, "height": 64},
+                "image_size": {"width": a.size, "height": a.size},  # match base
                 "n_frames": a.n_frames}, key)
             write_anim(anim, [im["base64"] for im in res["images"]])
             spent += res.get("usage", {}).get("usd", 0) or 0
+        ensure_emotion_dirs(a.out_dir)  # fill any emotion the scenes need from idle
         with open(os.path.join(a.out_dir, "mascot-meta.json"), "w", encoding="utf-8") as f:
             json.dump({"fps": a.fps, "name": "pixellab"}, f)
         print(f"  pixellab done -> {a.out_dir} (~${spent:.3f})")

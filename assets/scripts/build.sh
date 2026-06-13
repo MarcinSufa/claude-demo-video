@@ -89,7 +89,15 @@ fi
 #   pixellab       — generate frames via the PixelLab API (paid; needs PIXELLAB_API_KEY)
 MASCOT_ENABLED=$(python -c "import json;m=json.load(open('config.json')).get('mascot',{});print(1 if m.get('enabled', bool(m)) else 0)")
 if [ "$MASCOT_ENABLED" = "1" ]; then
+  # Clean slate every run: a prior build's sprites must never linger and overlay
+  # silently when this run's source is skipped/missing (would render the wrong
+  # — or a "mascot-less" — scene with stale grid frames). Each source repopulates.
+  rm -rf mascot mascot.json
   MASCOT_SOURCE=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('source','grid'))")
+  case "$MASCOT_SOURCE" in
+    grid|sheet|pixellab) ;;
+    *) echo "WARNING: unknown mascot.source '$MASCOT_SOURCE' - using grid"; MASCOT_SOURCE=grid ;;
+  esac
   if [ "$MASCOT_SOURCE" = "sheet" ]; then
     SHEET=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('sheet',''))")
     TAGS=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('tags',''))")
@@ -101,14 +109,14 @@ if [ "$MASCOT_ENABLED" = "1" ]; then
       echo "WARNING: mascot.source=sheet but sheet/tags not found ($SHEET / $TAGS) - building mascot-less"
     fi
   elif [ "$MASCOT_SOURCE" = "pixellab" ]; then
+    # Key resolution (env var or ~/.pixellab/credentials.json) is gen-pixellab's
+    # job — it fails soft with a clear message if absent, caught here as mascot-less.
     PROMPT=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('prompt',''))")
     NF=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('n_frames',6))")
-    if [ -z "$PIXELLAB_API_KEY" ]; then
-      echo "WARNING: mascot.source=pixellab but PIXELLAB_API_KEY unset - building mascot-less"
-    elif [ -n "$PROMPT" ]; then
+    if [ -n "$PROMPT" ]; then
       python gen-pixellab.py mascot --prompt "$PROMPT" --n-frames "$NF" \
         && echo "  mascot: generated via PixelLab" \
-        || { echo "WARNING: pixellab generation failed - building mascot-less"; rm -rf mascot; }
+        || { echo "WARNING: pixellab generation failed (no key / API error) - building mascot-less"; rm -rf mascot; }
     else
       echo "WARNING: mascot.source=pixellab but no mascot.prompt - building mascot-less"
     fi

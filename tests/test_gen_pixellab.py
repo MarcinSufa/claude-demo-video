@@ -35,3 +35,31 @@ class TestPixelLab(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKeyResolution(unittest.TestCase):
+    def test_env_var_wins_and_strips(self):
+        old = os.environ.get("PIXELLAB_API_KEY")
+        os.environ["PIXELLAB_API_KEY"] = "  abc123  "
+        try:
+            self.assertEqual(gp._load_key(), "abc123")
+        finally:
+            if old is None:
+                os.environ.pop("PIXELLAB_API_KEY", None)
+            else:
+                os.environ["PIXELLAB_API_KEY"] = old
+
+    def test_credentials_file_fallback(self):
+        import json as _json
+        from unittest import mock
+        old = os.environ.pop("PIXELLAB_API_KEY", None)
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".pixellab"))
+            with open(os.path.join(home, ".pixellab", "credentials.json"), "w") as f:
+                _json.dump({"api_key": "filekey"}, f)
+            try:
+                with mock.patch("os.path.expanduser", return_value=home):
+                    self.assertEqual(gp._load_key(), "filekey")
+            finally:
+                if old is not None:
+                    os.environ["PIXELLAB_API_KEY"] = old
