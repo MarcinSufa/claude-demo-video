@@ -26,7 +26,10 @@ PY
 NO_CACHE="${DEMO_NO_CACHE:-0}"
 ONLY="${DEMO_ONLY:-}"
 
-while IFS=$'\t' read -r id type mp4 extra; do
+# Read the plan on FD 3, NOT stdin: tools inside the loop (ffmpeg especially)
+# read stdin and would otherwise swallow the remaining scene rows, silently
+# building only the first scene. (Caught by the CI full-render smoke.)
+while IFS=$'\t' read -r id type mp4 extra <&3; do
   echo "[scene] $id ($type) -> $mp4"
 
   # P0-2: reuse a scene's clip when nothing affecting it changed (skip capture).
@@ -137,7 +140,7 @@ while IFS=$'\t' read -r id type mp4 extra; do
     # Mascot disabled (possibly after a previous overlaid build) — ship pristine.
     cp "$mp4.capture.mp4" "$mp4"
   fi
-done < .scene-rows.tsv
+done 3< .scene-rows.tsv
 
 rm -f .scene-rows.tsv
 echo "[scenes] all built"
