@@ -107,33 +107,31 @@ while IFS=$'\t' read -r id type mp4 extra <&3; do
       # the corner overlay phase). Record any url windows like before_after halves.
       echo "$extra" > ".scene-$id.json"
       python - "$id" <<'PY'
-import json, os, subprocess, sys
+import importlib.util, json, os, subprocess, sys
 sid = sys.argv[1]
+dps = importlib.util.spec_from_file_location("diorama_plan", "diorama_plan.py")
+dp = importlib.util.module_from_spec(dps); dps.loader.exec_module(dp)
 e = json.load(open(f".scene-{sid}.json"))
-windows = []
+clips = {}
 for w in e["windows"]:
-    win = {"id": w["id"], "x": w["x"], "y": w["y"], "w": w["w"]}
     if "capture" in w:                       # a live url window — record it now
         cap = w["capture"]
         json.dump(cap, open(f".scene-{sid}-{w['id']}.json", "w"))
         subprocess.check_call(["node", "record-browser.mjs", f".scene-{sid}-{w['id']}.json"])
         subprocess.check_call(["python", "cut-clip.py", cap["output"]])  # focus (no-op if unused)
-        win["clip"] = cap["output"]
-    else:                                    # a pre-rendered source clip
-        win["clip"] = w["source"]
-    windows.append(win)
-plan = {"canvas": e["canvas"], "camera": e["camera"], "windows": windows, "fps": 30,
-        "backdrop": (e.get("canvas") or {}).get("backdrop") or "color=c=0x0a0705"}
-if e.get("duration") is not None:            # else make-diorama uses the camera-tour length
-    plan["duration"] = e["duration"]
-# Mascot frames render into ./mascot from the GLOBAL mascot.enabled (build.sh),
-# independent of this scene's suppressed mascot_plan — attach when both present.
+        clips[w["id"]] = cap["output"]
+    else:
+        clips[w["id"]] = w["source"]
+pal = json.load(open("config.json")).get("palette", {})   # raw brand palette (apply-brand emits it)
+style = {"bar_bg": pal.get("end_card_bg", "#17171a"),
+         "rule":   pal.get("rule", "#2c2c32"),
+         "fg":     pal.get("fg", "#f4efe3")}               # raw #RRGGBB; make-diorama _ffcolor's it
+# Mascot RUNTIME enrichment (filesystem-derived) stays here, not in pure build_plan:
+mascot = None
 if e.get("mascot") and os.path.isdir("mascot"):
-    fps = json.load(open("mascot/mascot-meta.json")).get("fps", 12)
-    plan["mascot"] = {"keyframes": e["mascot"]["keyframes"], "frames_dir": "mascot", "fps": fps}
-else:
-    plan["mascot"] = None
-json.dump(plan, open(f".diorama-{sid}.json", "w"))
+    mfps = json.load(open("mascot/mascot-meta.json")).get("fps", 12)
+    mascot = {"keyframes": e["mascot"]["keyframes"], "frames_dir": "mascot", "fps": mfps}
+json.dump(dp.build_plan(e, clips, style, mascot=mascot), open(f".diorama-{sid}.json", "w"))
 PY
       python make-diorama.py ".diorama-$id.json" "$mp4"
       rm -f ".scene-$id.json" ".scene-$id"-*.json ".diorama-$id.json" ;;
