@@ -269,7 +269,7 @@ sequence:
     duration: 14                 # optional — defaults to the camera tour's length
     canvas: { width: 2560, height: 1440, backdrop: "color=c=0x0a0705" }  # 16:9; backdrop: lavfi color= or an image path
     windows:                     # id + top-left (x,y) + width (w); height follows the clip aspect
-      - { id: worker,   source: "footage/worker.mp4",        x: 120,  y: 300, w: 1000 }
+      - { id: worker,   source: "footage/worker.mp4",        x: 120,  y: 300, w: 1000, chrome: true }
       - { id: reviewer, url: "http://localhost:3000/review", x: 1440, y: 600, w: 1000, actions: [{ wait: 1.0 }] }
     camera:                      # focus: a window id | "all" (bbox of all windows); zoom>1 tightens
       - { focus: all,      zoom: 1.0, hold: 1.5 }
@@ -296,6 +296,7 @@ when consecutive keyframes target different ones.
   would distort). 2560×1440 is the natural choice.
 - **Heavier to render** than a flat scene — it composites the canvas and runs a
   second camera pass, so expect a diorama to cost more than an equivalent single clip.
+- **Window chrome (`chrome: true`).** A window may set `chrome: true` (and an optional `title:`, default = the window id) to draw a macOS-style title bar — three traffic-light dots + the title — framing it. Use it for raw `source`/`url` clips that don't bring their own window frame (the Fractal mockups draw their own chrome in HTML). The bar adds a fixed height above the clip, and the camera frames the whole window including its chrome. Long titles may clip.
 
 The global mascot's corner overlay is **auto-suppressed** on diorama scenes (the
 scene composites its own mascot on the canvas), so a diorama and ordinary overlaid
