@@ -48,3 +48,52 @@ class TestCameraFilter(unittest.TestCase):
         f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)
         # the moving segment eases x from 0 toward 800 with a smoothstep p*p*(3-2*p)
         self.assertIn("(3-2*", f)
+
+
+class TestDioramaTimeline(unittest.TestCase):
+    KEYFRAMES = [{"at": 0, "emotion": "idle", "at_window": "a", "anchor": "top"},
+                 {"at": 5, "emotion": "point", "at_window": "b", "anchor": "beside"}]
+
+    def test_two_windows_insert_walk_with_base_and_tail(self):
+        tl = md.diorama_timeline(self.KEYFRAMES, 10)
+        # base segment (first keyframe, on window a)
+        self.assertEqual(tl[0]["at"], 0)
+        self.assertEqual(tl[0]["at_window"], "a")
+        self.assertNotIn("move", tl[0])
+        # walk move segment a -> b
+        moves = [s for s in tl if "move" in s]
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(moves[0]["emotion"], "walk")
+        self.assertEqual(moves[0]["move"]["from_window"], "a")
+        self.assertEqual(moves[0]["move"]["to_window"], "b")
+        # tail segment lands on window b and reaches the duration
+        self.assertEqual(tl[-1]["at_window"], "b")
+        self.assertEqual(tl[-1]["until"], 10)
+        # contiguous from 0 to duration
+        self.assertEqual(tl[0]["at"], 0)
+        for p, q in zip(tl, tl[1:]):
+            self.assertAlmostEqual(p["until"], q["at"])
+        self.assertAlmostEqual(tl[-1]["until"], 10)
+
+
+class TestCanvasPositions(unittest.TestCase):
+    WINS = [{"id": "a", "x": 100, "y": 200, "w": 1280, "h": 720},
+            {"id": "b", "x": 2300, "y": 1100, "w": 1280, "h": 720}]
+
+    def test_static_segment_uses_window_anchor(self):
+        tl = [{"at": 0, "until": 3, "emotion": "idle",
+               "at_window": "a", "anchor": "top"}]
+        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140))
+        self.assertEqual(pos[0], (100 + (1280 - 160) // 2, 200 - 140))
+
+    def test_move_segment_resolves_both_windows(self):
+        tl = [{"at": 0, "until": 0.8, "emotion": "walk",
+               "move": {"from_window": "a", "from_anchor": "top",
+                        "to_window": "b", "to_anchor": "beside"}}]
+        pos = md.resolve_canvas_positions(tl, self.WINS, (160, 140))
+        self.assertEqual(pos[0][0], (100 + (1280 - 160) // 2, 200 - 140))
+        self.assertEqual(pos[0][1], (2300 + 1280 + 8, 1100 + (720 - 140) // 2))
+
+
+if __name__ == "__main__":
+    unittest.main()

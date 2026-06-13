@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from diorama_layout import camera_timeline, viewport_at  # noqa: E402
+from diorama_layout import camera_timeline, viewport_at, window_anchor  # noqa: E402
 
 
 def build_canvas_filter(windows, canvas):
@@ -58,3 +58,43 @@ def build_camera_filter(segs, canvas_w, canvas_h, out_w, out_h, fps):
     w = _coord_expr(segs, 2); h = _coord_expr(segs, 3)
     return (f"[canvas]crop=w='{w}':h='{h}':x='{x}':y='{y}':eval=frame,"
             f"scale={out_w}:{out_h},setsar=1[vout]")
+
+
+MOVE_SECONDS = 0.8
+
+
+def diorama_timeline(keyframes, duration):
+    """Sorted window-keyframes -> contiguous segments to `duration`, with a `walk`
+    move inserted when consecutive keyframes target different windows."""
+    kf = [k for k in sorted(keyframes, key=lambda k: k["at"]) if k["at"] < duration]
+    segs = []
+    for i, k in enumerate(kf):
+        start = k["at"]
+        end = kf[i + 1]["at"] if i + 1 < len(kf) else duration
+        if i > 0 and kf[i]["at_window"] != kf[i - 1]["at_window"]:
+            mv = min(MOVE_SECONDS, (end - start) / 2)
+            segs.append({"at": start, "until": start + mv, "emotion": "walk",
+                         "move": {"from_window": kf[i - 1]["at_window"],
+                                  "from_anchor": kf[i - 1]["anchor"],
+                                  "to_window": k["at_window"], "to_anchor": k["anchor"]}})
+            start += mv
+        segs.append({"at": start, "until": end, "emotion": k["emotion"],
+                     "at_window": k["at_window"], "anchor": k["anchor"]})
+    return segs
+
+
+def resolve_canvas_positions(timeline, windows, sprite_wh):
+    """Per-segment canvas anchors for the mascot. Static segs carry at_window+anchor;
+    move segs carry move.{from,to}_{window,anchor}. Returns the positions list
+    overlay-mascot.build_overlay_cmd expects."""
+    by_id = {w["id"]: w for w in windows}
+    sw, sh = sprite_wh
+    out = []
+    for seg in timeline:
+        if "move" in seg:
+            mv = seg["move"]
+            out.append((window_anchor(by_id[mv["from_window"]], mv["from_anchor"], sw, sh),
+                        window_anchor(by_id[mv["to_window"]], mv["to_anchor"], sw, sh)))
+        else:
+            out.append(window_anchor(by_id[seg["at_window"]], seg["anchor"], sw, sh))
+    return out
