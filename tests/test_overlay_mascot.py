@@ -119,11 +119,18 @@ class TestMotionExpressions(unittest.TestCase):
         cmd = self._cmd(tl)
         return cmd[cmd.index("-filter_complex") + 1]
 
-    def test_move_segment_lerps_between_anchor_xs(self):
+    def test_move_segment_eases_between_anchor_xs(self):
         fc = self._fc(self.MOVE_TL)
         x0 = om.anchor_xy("bottom-right", 1920, 1080, 160, 140)[0]
         x1 = om.anchor_xy("bottom-left", 1920, 1080, 160, 140)[0]
-        self.assertIn(f"'{x0}+({x1}-{x0})*clip((t-3.000)/0.800,0,1)'", fc)
+        p = "clip((t-3.000)/0.800,0,1)"
+        # smoothstep ease, not linear: x = x0+(x1-x0)*(p*p*(3-2*p))
+        self.assertIn(f"'{x0}+({x1}-{x0})*({p}*{p}*(3-2*{p}))'", fc)
+
+    def test_move_segment_has_hop_arc(self):
+        fc = self._fc(self.MOVE_TL)
+        # a horizontal move adds a parabolic jump arc to y (peak HOP_ARC_PX)
+        self.assertIn(f"-{om.HOP_ARC_PX}*sin(PI*clip((t-3.000)/0.800,0,1))", fc)
 
     def test_celebrate_y_bounces(self):
         fc = self._fc(self.MOVE_TL)

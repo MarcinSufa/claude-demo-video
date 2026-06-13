@@ -15,6 +15,7 @@ import sys
 
 MARGIN_PX = 24                # side margin from the frame edge
 CAPTION_CLEARANCE_PX = 200    # lift above the burned caption band (spec §5)
+HOP_ARC_PX = 70               # peak height of the jump arc during a move
 
 
 def anchor_xy(position, video_w, video_h, sprite_w, sprite_h):
@@ -59,12 +60,21 @@ def resolve_anchors(timeline, video_w, video_h, sprite_w, sprite_h):
 
 def _segment_xy(seg, anchor):
     """The overlay x/y for one segment: ints for static segments, ffmpeg
-    `t`-expressions (quoted) for moves and emotion motion."""
+    `t`-expressions (quoted) for moves and emotion motion.
+
+    A move EASES (smoothstep, no robotic start/stop) and HOPS (a parabolic arc
+    up-and-down via sin(PI*p)) instead of sliding linearly — so travel between
+    positions reads as the character jumping there. The arc is suppressed for a
+    big downward move (an off-screen hide/exit just slides down)."""
     at, dur = seg["at"], seg["until"] - seg["at"]
     if "move" in seg:
         (x0, y0), (x1, y1) = anchor
-        prog = f"clip((t-{at:.3f})/{dur:.3f},0,1)"
-        return (f"'{x0}+({x1}-{x0})*{prog}'", f"'{y0}+({y1}-{y0})*{prog}'")
+        p = f"clip((t-{at:.3f})/{dur:.3f},0,1)"   # linear progress 0..1
+        pe = f"({p}*{p}*(3-2*{p}))"                # smoothstep ease-in-out
+        arc = HOP_ARC_PX if y1 <= y0 + 40 else 0   # no arc on a downward hide
+        arc_term = f"-{arc}*sin(PI*{p})" if arc else ""
+        return (f"'{x0}+({x1}-{x0})*{pe}'",
+                f"'{y0}+({y1}-{y0})*{pe}{arc_term}'")
     x, y = anchor
     if seg["emotion"] == "celebrate":   # bounce
         return x, f"'{y}-18*abs(sin((t-{at:.3f})*4))'"
