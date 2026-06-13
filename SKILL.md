@@ -348,11 +348,20 @@ mascot:
 ```
 
 **Procedural shading (`shade: true`).** A flat character gets dimensionality at
-build time with no art rework: `shade_sprite.py` adds a lighter rim where light
-hits the top of the silhouette, a darker rim along the bottom, and a near-white
-catch-light in each eye. It's deterministic, derives the new colours from the
-character's own body colour, and works on any character that has `body` and
-`eyes` palette slots. Off by default (flat fills); opt in per project.
+build time with no art rework: `shade_sprite.py` (shader v2) adds a *hue-shifted
+ramp* the way pixel artists do it — light reads warm, shadow reads cool, so flat
+fills look painted rather than just dimmed. On the top of the silhouette it places
+a `hi` rim that's lighter **and** hue-rotated toward yellow (slightly
+desaturated); along the bottom a `shade` rim that's darker **and** hue-rotated
+toward blue/purple (slightly more saturated). A second, deeper `shade2` lands on
+the silhouette floor and under overhangs (chin, pouch) for a two-step shadow
+gradient instead of one flat band, and a subtle 1-cell checkerboard *dither*
+softens the body→shadow boundary into texture rather than a hard line. Each eye
+still gets a near-white catch-light. It's deterministic, derives every new colour
+from the character's own body colour (near-greys ramp by value only, no tint), and
+works on any character that has `body` and `eyes` palette slots. The dither is on
+by default (pass `--no-dither` to `shade_sprite.py` to disable). Off by default
+(flat fills); opt in per project.
 
 The mascot's emotion is inferred from the scene type by default (e.g. `type` for terminal, `idle` for browser captures). Override per scene using the dict form in `scenes.sequence`:
 
