@@ -14,6 +14,7 @@ by tests/smoke_build.sh's diorama tier.
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -147,14 +148,17 @@ def main():
                   f"{backdrop}:s={canvas['width']}x{canvas['height']}:d={dur:.3f}"]
     else:
         inputs = ["-i", backdrop]
-    for w in windows:
-        normmod.main(["normalize-clip.py", w["clip"], str(dur)])  # pin each window to DUR
-        inputs += ["-i", w["clip"]]
-    # Fill each window's CANVAS HEIGHT (h) from its clip aspect at the target
-    # width — the layout/camera functions need it; plan-scenes only set x/y/w.
-    for w in windows:
+    # Per window: probe the ORIGINAL for aspect (fills the canvas height h the
+    # layout/camera need — plan-scenes only set x/y/w), then normalize a COPY in
+    # the workdir to DUR. normalize-clip.py replaces in place, so normalizing
+    # w["clip"] directly would trim/pad the user's SOURCE footage — copy first.
+    for i, w in enumerate(windows):
         cw, ch = (int(v) for v in _probe(w["clip"], "stream=width,height").split(","))
         w["h"] = round(w["w"] * ch / cw)
+        win_clip = os.path.join(workdir, f".diorama-win-{i}.mp4")
+        shutil.copyfile(w["clip"], win_clip)
+        normmod.main(["normalize-clip.py", win_clip, str(dur)])  # pin the COPY to DUR
+        inputs += ["-i", win_clip]
     canvas_mp4 = os.path.join(workdir, ".diorama-canvas.mp4")
     fc = build_canvas_filter(windows, canvas) + \
         f";[canvas]trim=duration={dur:.3f},setpts=PTS-STARTPTS[v]"

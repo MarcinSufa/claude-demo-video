@@ -64,6 +64,30 @@ class TestFocusRect(unittest.TestCase):
         self.assertLessEqual(x + w, CANVAS["width"])
         self.assertLessEqual(y + h, CANVAS["height"])
 
+    def test_fractional_zoom_viewport_stays_within_canvas(self):
+        # size and position are rounded independently — that must not push the rect
+        # past the edge (regression: zoom 1.7 on a 2560 canvas yields a 1506px span)
+        c = {"width": 2560, "height": 1440}
+        wins = {"r": {"x": 1540, "y": 300, "w": 900, "h": 506}}
+        x, y, w, h = focus_rect({"focus": "r", "zoom": 1.7}, wins, c)
+        self.assertGreaterEqual(x, 0)
+        self.assertGreaterEqual(y, 0)
+        self.assertLessEqual(x + w, c["width"])
+        self.assertLessEqual(y + h, c["height"])
+
+    def test_mascot_focus_without_position_raises(self):
+        # v1 can't follow the mascot (the tour is built before mascot positions are
+        # known) — a focus:mascot stop must fail loud, not silently center on canvas
+        with self.assertRaises(ValueError):
+            focus_rect({"focus": "mascot", "zoom": 1.5}, WINS, CANVAS)
+
+    def test_mascot_focus_with_explicit_position_centers_on_it(self):
+        # the mascot_xy hook still works (future "camera follows mascot")
+        x, y, w, h = focus_rect({"focus": "mascot", "zoom": 2.0}, WINS, CANVAS,
+                                mascot_xy=(1920, 1080))
+        self.assertLessEqual(x + w, CANVAS["width"])
+        self.assertLessEqual(y + h, CANVAS["height"])
+
 
 class TestCameraTimeline(unittest.TestCase):
     STOPS = [

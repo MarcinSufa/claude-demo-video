@@ -148,5 +148,13 @@ DW=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0
 DH=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$DIO")
 { [ "$DW" = "1920" ] && [ "$DH" = "1080" ]; } || fail "diorama clip not 1920x1080 (${DW}x${DH})"
 nonblank "$DIO" 1 3 5 || fail "diorama clip looks blank (canvas/camera/mascot composite produced no colour)"
-echo "   diorama OK ($DIO, ${DW}x${DH})"
+# The diorama must normalize window clips on workdir COPIES, never the user's
+# source footage in place. The smoke's source windows were generated at 4s and
+# the scene is 6s — if make-diorama pad-normalized them in place they'd now be 6s.
+for f in footage/da.mp4 footage/db.mp4; do
+  fdur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f" 2>/dev/null)
+  python -c "import sys;sys.exit(0 if abs(float('${fdur:-0}')-4.0)<0.3 else 1)" \
+    || fail "diorama mutated source footage in place ($f is ${fdur}s, expected ~4s)"
+done
+echo "   diorama OK ($DIO, ${DW}x${DH}); source footage intact"
 echo "SMOKE PASS"

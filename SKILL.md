@@ -271,7 +271,7 @@ sequence:
     windows:                     # id + top-left (x,y) + width (w); height follows the clip aspect
       - { id: worker,   source: "footage/worker.mp4",        x: 120,  y: 300, w: 1000 }
       - { id: reviewer, url: "http://localhost:3000/review", x: 1440, y: 600, w: 1000, actions: [{ wait: 1.0 }] }
-    camera:                      # focus: a window id | "all" (bbox of all windows) | "mascot"; zoom>1 tightens
+    camera:                      # focus: a window id | "all" (bbox of all windows); zoom>1 tightens
       - { focus: all,      zoom: 1.0, hold: 1.5 }
       - { focus: worker,   zoom: 1.8, hold: 3.0, transition: 1.2 }   # transition eases INTO this stop
       - { focus: reviewer, zoom: 1.8, hold: 3.0, transition: 1.2 }

@@ -38,7 +38,11 @@ def focus_rect(stop, windows, canvas, out_aspect=16 / 9, mascot_xy=None):
         bx, by, bw, bh = _bbox(list(windows.values()))
         cx, cy = bx + bw / 2, by + bh / 2
     elif focus == "mascot":
-        cx, cy = mascot_xy if mascot_xy else (cw_canvas / 2, ch_canvas / 2)
+        if mascot_xy is None:                # v1 cannot follow the mascot (the tour is
+            raise ValueError(                # built before mascot positions are known)
+                "focus 'mascot' needs a mascot position; not supported in v1 camera "
+                "tours — use a window id or 'all'")
+        cx, cy = mascot_xy
     else:
         w = windows[focus]
         cx, cy = w["x"] + w["w"] / 2, w["y"] + w["h"] / 2
@@ -47,9 +51,10 @@ def focus_rect(stop, windows, canvas, out_aspect=16 / 9, mascot_xy=None):
     vh = vw / out_aspect
     if vh > ch_canvas:                       # never taller than the canvas
         vh = ch_canvas; vw = vh * out_aspect
-    x = min(max(0, cx - vw / 2), cw_canvas - vw)
-    y = min(max(0, cy - vh / 2), ch_canvas - vh)
-    return round(x), round(y), round(vw), round(vh)
+    vw, vh = round(vw), round(vh)            # round size first so the clamp below uses
+    x = min(max(0, round(cx - vw / 2)), cw_canvas - vw)   # the SAME dims we return, and
+    y = min(max(0, round(cy - vh / 2)), ch_canvas - vh)   # the rect can't sit past the edge
+    return x, y, vw, vh
 
 
 def camera_duration(stops):
