@@ -116,3 +116,14 @@ class TestStaleFrameClearing(unittest.TestCase):
             rm.render_animation(mascot, "idle", [["b"], ["b"]], out)
             self.assertTrue(os.path.exists(os.path.join(out, "f_002.png")))
             self.assertFalse(os.path.exists(os.path.join(out, "f_003.png")))
+
+
+class TestAnchorFeet(unittest.TestCase):
+    def test_pins_higher_feet_down_to_baseline(self):
+        # f0 feet at row 1, f1 feet at row 0 -> f1 shifted down so both plant on row 1
+        out = rm.anchor_feet([["..", "bb"], ["bb", ".."]], ["."])
+        self.assertEqual(out, [["..", "bb"], ["..", "bb"]])
+
+    def test_noop_when_already_planted(self):
+        f = [["..", "bb"], [".b", "bb"]]
+        self.assertEqual(rm.anchor_feet(f, ["."]), f)

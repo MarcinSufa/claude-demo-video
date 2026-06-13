@@ -16,8 +16,9 @@ import json
 import os
 import sys
 
-# Bump to invalidate ALL caches when a recorder/normalizer change makes old clips wrong.
-VERSION = "2"
+# Bump to invalidate ALL caches when a recorder/normalizer/compositor change makes
+# old clips wrong. v3: overlay-mascot.py eased/arced moves + render feet-anchoring.
+VERSION = "3"
 
 
 def cache_key(entry, dep_files=()):
