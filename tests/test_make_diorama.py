@@ -27,3 +27,24 @@ class TestCanvasFilter(unittest.TestCase):
         fc = md.build_canvas_filter(WINDOWS, CANVAS)
         self.assertIn("[1:v]scale=1280:-2", fc)   # window 'a' to width 1280
         self.assertIn("[2:v]scale=1280:-2", fc)
+
+
+class TestCameraFilter(unittest.TestCase):
+    SEGS = [(0.0, 2.0, (0, 0, 1920, 1080), (0, 0, 1920, 1080)),
+            (2.0, 3.0, (0, 0, 1920, 1080), (800, 400, 960, 540))]
+
+    def test_crops_then_scales_to_output(self):
+        f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)
+        self.assertIn("crop=", f)
+        self.assertIn("eval=frame", f)
+        self.assertIn("scale=1920:1080", f)
+
+    def test_expression_covers_each_segment_window(self):
+        f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)
+        self.assertIn("between(t,0.000,2.000)", f)
+        self.assertIn("between(t,2.000,3.000)", f)
+
+    def test_transition_uses_smoothstep(self):
+        f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)
+        # the moving segment eases x from 0 toward 800 with a smoothstep p*p*(3-2*p)
+        self.assertIn("(3-2*", f)
