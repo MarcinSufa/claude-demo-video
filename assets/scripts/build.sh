@@ -19,6 +19,16 @@ SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"   # .../scripts
 SKILL_ASSETS="$(dirname "$SKILL_SCRIPTS")"        # .../assets  (mascots live at $SKILL_ASSETS/mascots)
 BUILD=".build"
 
+# Vendored-script drift guard: warn (don't block) if this project's scripts/ is
+# internally inconsistent — a partial re-sync from the skill that silently mixes
+# old + new scripts. Turns a confusing soft failure into a clear "re-sync" message.
+if [ -f "$SKILL_SCRIPTS/scripts_fingerprint.py" ]; then
+  if ! python "$SKILL_SCRIPTS/scripts_fingerprint.py" --check "$SKILL_SCRIPTS"; then
+    echo "WARNING: demo-video scripts are out of sync (see above). The build may"
+    echo "         misbehave; re-copy assets/scripts/* from the skill to fix."
+  fi
+fi
+
 # ─── Progress bar + elapsed/ETA ─────────────────────────────────────────
 BUILD_START=$(date +%s)
 step() {                       # step <percent> <label...>

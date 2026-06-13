@@ -460,10 +460,30 @@ scenes:
 
 **Two-layer cache.** Mascot frames are cached separately from scene recordings. Changing `mascot:` config (emotion, position, scale, keyframes) re-overlays without re-recording, so iteration is fast.
 
+## Testing & maintenance
+
+- **Unit tests** — `python -m unittest discover -s tests` (timing/duration, scene
+  cache, mascot data/shading/timeline/sources; run before changing those scripts).
+- **Integration smoke** — `bash tests/smoke_build.sh` scaffolds a throwaway project
+  and exercises the real pipeline. It always runs a light `--plan` tier (config +
+  scene-plan + drift guard); with `node` + `edge-tts` + a Playwright `node_modules`
+  present (or `DEMO_SMOKE_NODE_MODULES=/path`) it also does a FULL render and asserts
+  a non-blank video. Catches integration breaks unit tests can't (mockups not copied
+  into `.build`, mascot-less arg skew, white-flash).
+- **Vendored-script drift guard** — each project keeps a COPY of these scripts in
+  `demo-video/scripts/`. A partial re-sync (some files refreshed, others stale) used
+  to fail silently (e.g. a new `build.sh` passing `--scale` to an old
+  `render-mascot.py`). `build.sh` now fingerprints its scripts against the committed
+  `assets/scripts/VERSION` and **warns** if they're inconsistent — re-copy ALL of
+  `assets/scripts/*` to fix. After changing any runtime script, refresh the stamp:
+  `python assets/scripts/scripts_fingerprint.py --write assets/scripts` (a unit test
+  enforces it's current).
+- **CI** — `.github/workflows/test.yml` runs the unit tests, shell syntax checks, and
+  the `--plan` smoke tier on every push/PR.
+
 ## See also
 
 - `references/workflow.md` — pipeline internals, what each step does
 - `references/brand-config.md` — full `brand.yaml` schema with all options
 - `references/troubleshooting.md` — debugging white flashes, sync drift, audio truncation
 - `references/persuasion-pacing.md` — VO writing principles (Anthropic-style narration, 115 wpm, short sentences)
-- `tests/` — `python -m unittest discover -s tests` (timing/duration logic; run before changing those scripts)

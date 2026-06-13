@@ -1,0 +1,34 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip pyyaml
+
+      - name: Shell syntax check
+        run: |
+          for f in assets/scripts/*.sh tests/*.sh; do
+            echo "bash -n $f"; bash -n "$f"
+          done
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+
+      - name: Integration smoke (plan tier)
+        # The full-render tier auto-skips here (no Playwright node_modules in CI);
+        # it exercises config parse, scene-plan resolution and the drift guard.
+        run: bash tests/smoke_build.sh
