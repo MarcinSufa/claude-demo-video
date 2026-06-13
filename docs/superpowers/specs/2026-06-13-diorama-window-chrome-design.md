@@ -73,6 +73,18 @@ The bar/rule/fg colours travel in the diorama plan JSON (a `chrome_style` block 
 - `tests/test_make_diorama.py`, `tests/test_diorama_layout.py`, `tests/smoke_build.sh` — the tests above.
 - `assets/scripts/VERSION` — regenerate (drift guard).
 
+## Implementation notes (from design review)
+
+- **Per-window filter order.** For each window, in order: `overlay` the clip at `(x, y + BAR_H if chrome else y)`; then for chrome windows `drawbox` bar at `(x, y, W, BAR_H)` → `drawbox` rule at `(x, y+BAR_H-2, W, 2)` → `overlay` dots (left pad, vertically centered) → `drawtext` title. `chrome_chain()` returns this fragment in this fixed order so tests can assert it.
+- **Hex → ffmpeg colour.** The brand palette is `#RRGGBB`; `drawbox`/`drawtext` want `0xRRGGBB`. Add a tiny `_ffcolor("#1e1714") -> "0x1e1714"` normalizer — nothing in the repo does this yet (`drawbox` is unused today; `assemble.sh` only strips `#` for a different use).
+- **Dots PNG is a single image.** Same raw-RGBA pipe as `render-mascot.py`, but one frame, not an `f_%03d.png` sequence: `ffmpeg -f rawvideo -pix_fmt rgba -s WxH -i - -frames:v 1 dots.png`. `chrome_metrics(BAR_H)` also returns the dots strip's width/height (≈ `3*diameter + 2*gap` × `diameter`).
+- **ffmpeg input indexing.** Inputs stay `[0]=backdrop`, `[1..N]=window clips`; the dots PNG is added as input `[N+1]` and `split` to one copy per chrome window. Window labels `[1:v..N:v]` are unchanged; tests assert the dots label/index.
+- **build-scenes palette read.** After the window loop, when `any(w.get("chrome"))`, read `config.json`'s palette (`apply-brand.py` emits `end_card_bg`, `rule`, `fg`) and write the `chrome_style` block into the plan JSON.
+- **Imports.** `make-diorama` loads `make-before-after` (for `find_font`/`_esc_path`/`ascii_label`) via `importlib.util` — same as it already loads `normalize-clip` / `overlay-mascot` — to avoid running its `main()` on import.
+- **Title sanitization + overflow.** Title text goes through the existing `ascii_label()` helper, written to a per-window UTF-8 textfile. Long titles exceeding `W - title_x` may clip — truncation is out of scope for v1 (note it in docs).
+- **Window fit is author responsibility.** Only the canvas aspect (Guardrail 1) and mascot anchors (Guardrail 2) are guarded; a window whose `x+W` / `y+BAR_H+clip_h` exceeds the canvas is author error (cropped by the camera), not validated.
+- **Passthrough test.** Cover `chrome`/`title` surviving into the make-diorama plan JSON — the bug is in `build-scenes.sh`, so exercise the heredoc transform, not just `plan-scenes`. Smoke: `chrome: true` on window `a` of the smoke diorama is enough (no need for both).
+
 ## Out of scope (future)
 
 - Title in the brand **mono** font (JetBrains Mono) — needs the `.ttf` locally for drawtext; v1 uses the `find_font()` system fallback.
