@@ -33,16 +33,30 @@ class TestCameraFilter(unittest.TestCase):
     SEGS = [(0.0, 2.0, (0, 0, 1920, 1080), (0, 0, 1920, 1080)),
             (2.0, 3.0, (0, 0, 1920, 1080), (800, 400, 960, 540))]
 
-    def test_crops_then_scales_to_output(self):
+    def test_zoompan_into_output_size(self):
         f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)
-        self.assertIn("crop=", f)
-        self.assertIn("eval=frame", f)
-        self.assertIn("scale=1920:1080", f)
+        self.assertIn("zoompan=", f)
+        self.assertIn("s=1920x1080", f)
+        # input pinned to fps so zoompan's on/fps time base maps to seconds
+        self.assertIn("[0:v]fps=30,", f)
 
-    def test_expression_covers_each_segment_window(self):
+    def test_no_unsupported_crop_eval(self):
+        # crop's `eval` option is absent on some ffmpeg builds (and animated crop
+        # can't change output size anyway) — must not regress to it
         f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)
-        self.assertIn("between(t,0.000,2.000)", f)
-        self.assertIn("between(t,2.000,3.000)", f)
+        self.assertNotIn("eval=frame", f)
+
+    def test_expression_covers_each_segment_on_frame_time(self):
+        f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)
+        # zoompan exposes the output-frame counter `on`, not `t`
+        self.assertIn("between((on/30.000),0.000,2.000)", f)
+        self.assertIn("between((on/30.000),2.000,3.000)", f)
+
+    def test_zoom_derived_from_canvas_width(self):
+        f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)
+        # zoom factor = canvas_width / viewport_width, clamped so it never zooms
+        # out past the full canvas
+        self.assertIn("max(1,3840/(", f)
 
     def test_transition_uses_smoothstep(self):
         f = md.build_camera_filter(self.SEGS, 3840, 2160, 1920, 1080, fps=30)

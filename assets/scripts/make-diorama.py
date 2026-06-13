@@ -35,29 +35,45 @@ def build_canvas_filter(windows, canvas):
     return ";".join(parts)
 
 
-def _coord_expr(segs, idx):
+def _coord_expr(segs, idx, tvar="t"):
     """Piecewise ffmpeg expression for viewport coordinate `idx`
     (0=x,1=y,2=w,3=h) over the camera segments: smoothstep within each segment,
-    constant for holds (a==b makes the eased term collapse to the value)."""
+    constant for holds (a==b makes the eased term collapse to the value). `tvar`
+    is the time expression (default "t"; zoompan has no `t`, so it passes on/fps)."""
     expr = f"{segs[-1][3][idx]}"  # default = last segment's end value
     for (s, e, a, b) in reversed(segs):
         dur = e - s
         if dur <= 0:
             continue
-        p = f"clip((t-{s:.3f})/{dur:.3f},0,1)"
+        p = f"clip(({tvar}-{s:.3f})/{dur:.3f},0,1)"
         pe = f"({p}*{p}*(3-2*{p}))"
         val = f"({a[idx]}+({b[idx]}-{a[idx]})*{pe})"
-        expr = f"if(between(t,{s:.3f},{e:.3f}),{val},{expr})"
+        expr = f"if(between({tvar},{s:.3f},{e:.3f}),{val},{expr})"
     return expr
 
 
 def build_camera_filter(segs, canvas_w, canvas_h, out_w, out_h, fps):
-    """Animated crop of [canvas] following the camera segments, scaled to output.
-    Consumes label [canvas], produces [vout]."""
-    x = _coord_expr(segs, 0); y = _coord_expr(segs, 1)
-    w = _coord_expr(segs, 2); h = _coord_expr(segs, 3)
-    return (f"[canvas]crop=w='{w}':h='{h}':x='{x}':y='{y}':eval=frame,"
-            f"scale={out_w}:{out_h},setsar=1[vout]")
+    """Eased camera over the canvas via zoompan — smooth pan+zoom into a fixed
+    out_w x out_h frame. Consumes [0:v] (the canvas/mascot mp4 read as input 0),
+    produces [vout].
+
+    Not crop+scale: crop's `eval` option is absent on some ffmpeg builds, and a
+    filter's output size is fixed at init so an animated crop window can't zoom.
+    zoompan always scales its crop to a fixed `s`, so it animates cleanly. It has
+    no `t`, only the output-frame counter `on`, so the input is first pinned to
+    `fps` CFR and time is on/fps. Zoom = canvas_w/viewport_w (clamped >= 1, i.e.
+    never wider than the canvas); x/y are the viewport top-left, clamped in-bounds.
+    Requires a canvas whose aspect matches the output (zoompan's crop is
+    canvas-aspect), which focus_rect guarantees."""
+    tv = f"(on/{float(fps):.3f})"
+    xe = _coord_expr(segs, 0, tv)
+    ye = _coord_expr(segs, 1, tv)
+    we = _coord_expr(segs, 2, tv)
+    z = f"max(1,{canvas_w}/({we}))"
+    x = f"max(0,min({xe},iw-iw/zoom))"
+    y = f"max(0,min({ye},ih-ih/zoom))"
+    return (f"[0:v]fps={fps},zoompan=z='{z}':x='{x}':y='{y}':"
+            f"d=1:s={out_w}x{out_h}:fps={fps},setsar=1[vout]")
 
 
 MOVE_SECONDS = 0.8
@@ -140,7 +156,7 @@ def main():
     fc = build_canvas_filter(windows, canvas) + \
         f";[canvas]trim=duration={dur:.3f},setpts=PTS-STARTPTS[v]"
     subprocess.check_call(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs,
-        "-filter_complex", fc, "-map", "[v]", "-t", f"{dur:.3f}",
+        "-filter_complex", fc, "-map", "[v]", "-t", f"{dur:.3f}", "-r", str(fps),
         "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", canvas_mp4])
 
     # 2. mascot on the canvas (optional)
