@@ -328,6 +328,76 @@ class MeasureVoiceRate(unittest.TestCase):
         self.assertAlmostEqual(result["wpm"], 172.0, delta=2.0)
 
 
+class RoundTripEstimateMatchesMeasurement(unittest.TestCase):
+    def test_estimate_vo_seconds_recovers_measure_voice_rate_speech_end(self):
+        # The acceptance test grok-review2.md finding A calls out as missing:
+        # feed measure_voice_rate a realistic multi-line fixture with
+        # non-zero padding, then feed ITS OUTPUTS into estimate_vo_seconds,
+        # and the result must come back to the original speech-end -- i.e.
+        # the calibration terms measure_voice_rate reports must be exactly
+        # the terms estimate_vo_seconds needs, with nothing double-counted.
+        #
+        # Fixture mirrors make-vo.py's real construction: cursor advances by
+        # each segment's full mp3 duration (leading-silence-in-segment +
+        # words + trailing-silence-in-segment) + pause_after; line_start/
+        # line_end are the actual first/last WORD times within that segment.
+        # leading_offset = 1.2s (mix delay).
+        # line1: seg_dur=3.0s, offset(leading pad)=0.2s, word_span=2.5s
+        #        -> line_start=1.4, line_end=3.9, overhead=0.2+0.3(trail)=0.5
+        # pause_after after line1 = 0.5s
+        # line2: seg_dur=2.8s, offset=0.1s, word_span=2.2s
+        #        -> cursor=1.2+3.0+0.5=4.7 -> line_start=4.8, line_end=7.0,
+        #           overhead=0.1+0.5(trail)=0.6
+        # pause_after after line2 = 0.7s
+        # line3 (LAST): seg_dur=2.3s, offset=0.0s, word_span=2.0s, trailing
+        #        silence=0.3s (edge-tts pads the LAST segment too -- the
+        #        common real case; the segment mp3 keeps playing 0.3s after
+        #        the last word, same as every other line's segment)
+        #        -> cursor=4.7+2.8+0.7=8.2 -> line_start=8.2, line_end=10.2,
+        #           overhead=0.3
+        # That trailing 0.3s is real audio duration speech_end_seconds()
+        # deliberately excludes (it's measuring last-WORD end, not segment
+        # end -- see its docstring) but estimate_vo_seconds's
+        # `sum(seg_dur)`-equivalent reconstruction has no way to know only
+        # the LAST segment's padding should be dropped from the total, so it
+        # comes back trailing_pad_n seconds OVER speech_end. See
+        # estimate_vo_seconds's docstring for why this is accepted.
+        words_data = {"leading_offset": 1.2, "lines": [
+            {"line_start": 1.4, "line_end": 3.9, "words": ["w"] * 8},
+            {"line_start": 4.8, "line_end": 7.0, "words": ["w"] * 7},
+            {"line_start": 8.2, "line_end": 10.2, "words": ["w"] * 6},
+        ]}
+        pause_afters = [0.5, 0.7]
+        seg_durs = [3.0, 2.8, 2.3]
+        last_line_trailing_pad = 0.3
+
+        measured = timing_util.measure_voice_rate(words_data, pause_afters, seg_durs)
+        original_speech_end = timing_util.speech_end_seconds(words_data)
+        self.assertAlmostEqual(original_speech_end, 10.2, places=3)
+
+        # voiceover shape estimate_vo_seconds expects: total word count and
+        # internal pause_afters must match what was actually spoken.
+        voiceover = [
+            {"text": " ".join(["w"] * 8), "pause_after": 0.5},
+            {"text": " ".join(["w"] * 7), "pause_after": 0.7},
+            {"text": " ".join(["w"] * 6), "pause_after": 0.0},  # trailing, excluded
+        ]
+        estimate = timing_util.estimate_vo_seconds(
+            voiceover, wpm=measured["wpm"],
+            leading_offset=measured["leading_offset"],
+            per_line_overhead=measured["per_line_overhead"])
+
+        # estimate_vo_seconds cannot know that ONLY the last segment's
+        # padding should be dropped (it never sees seg_durs, only the
+        # averaged per_line_overhead) so it comes back over speech_end by
+        # exactly that last segment's trailing pad -- a conservative
+        # over-estimate, never an under-estimate that could reproduce the
+        # truncation bug this whole calibration exists to prevent.
+        self.assertAlmostEqual(
+            estimate, original_speech_end + last_line_trailing_pad, delta=0.01)
+        self.assertGreater(estimate, original_speech_end)
+
+
 class CalibrationPasteLines(unittest.TestCase):
     def test_includes_wpm_and_notes_cache_only_offsets(self):
         # residual 1 (grok-review2.md C): make-vo.py's paste hint used to
