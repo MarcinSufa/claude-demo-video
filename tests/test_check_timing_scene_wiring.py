@@ -94,6 +94,71 @@ class CompositeSpeedupWiring(unittest.TestCase):
                        f"expected a scene-alignment violation using the real "
                        f"project speedup ({speedup}) for the composite cut; "
                        f"got:\n{output}")
+        # finding 5: a bare "WARNING" substring match would also pass if the
+        # kwarg WERE dropped -- check_scene_alignment still fires a violation
+        # against the wrong (unconverted) cut, just at the wrong overrun.
+        # Pin the actual numbers so this test fails if composite_speedup
+        # stops being wired through, not just if the warning path breaks
+        # entirely. correct_cut=14.07 -> window_end rounds to 14.1, overrun
+        # = 17.0 - 14.0667 = 2.93 -> 2.9s. wrong_cut (18.73) would instead
+        # report window_end 18.7 and overrun -1.7 (i.e. no violation at all,
+        # since the line would sit inside the wrongly enlarged window).
+        expected_overrun = 17.0 - correct_cut
+        self.assertIn(f"{correct_cut:.1f}s)", output)
+        self.assertIn(f"by {expected_overrun:.1f}s", output)
+        self.assertNotIn(f"{wrong_cut_if_kwarg_dropped:.1f}s)", output)
+
+
+class StaleWordsHardFail(unittest.TestCase):
+    """finding 5: check-timing.py's stale-mtime guard (main(), gap >
+    STALE_WORDS_GAP_SECONDS) had no unit coverage -- only the two green
+    paths (missing files) and the scene-alignment warn-only path were
+    tested. This pins the hard-fail path itself: a vo-words.json far older
+    than the video it's being checked against must FAIL the build (exit 1),
+    not warn-and-continue like the scene-alignment check does.
+    """
+
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        os.chdir(self._tmp.name)
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        self._tmp.cleanup()
+
+    def test_words_file_far_older_than_video_fails_the_build(self):
+        words = {"leading_offset": 0.0, "lines": [
+            {"line_start": 0.0, "line_end": 5.0, "text": "hello world"}]}
+        with open("vo-words.json", "w", encoding="utf-8") as f:
+            json.dump(words, f)
+        open("video.mp4", "wb").close()
+
+        now = 2_000_000_000  # arbitrary fixed epoch, far past STALE gap math
+        os.utime("vo-words.json", (now, now))
+        os.utime("video.mp4", (now + 7200, now + 7200))  # 2h newer -> stale
+
+        module = _load_check_timing()
+        module._probe_duration = lambda path: (_ for _ in ()).throw(
+            AssertionError("must not probe video duration once already stale"))
+        rc = module.main(["check-timing.py", "video.mp4", "vo-words.json"])
+        self.assertEqual(rc, 1)
+
+    def test_words_file_close_in_age_to_video_does_not_trigger_stale_fail(self):
+        words = {"leading_offset": 0.0, "lines": [
+            {"line_start": 0.0, "line_end": 5.0, "text": "hello world"}]}
+        with open("vo-words.json", "w", encoding="utf-8") as f:
+            json.dump(words, f)
+        open("video.mp4", "wb").close()
+
+        now = 2_000_000_000
+        os.utime("vo-words.json", (now, now))
+        os.utime("video.mp4", (now + 60, now + 60))  # normal pipeline ordering
+
+        module = _load_check_timing()
+        module._probe_duration = lambda path: 5.0  # fits, no scene-plan/config -> no alignment check
+        rc = module.main(["check-timing.py", "video.mp4", "vo-words.json"])
+        self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":
