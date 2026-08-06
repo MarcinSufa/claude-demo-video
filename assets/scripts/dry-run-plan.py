@@ -56,6 +56,13 @@ def resolve_wpm(cfg):
     made following our advice strictly worse than leaving the cache alone
     (finding 4).
 
+    Without a cache entry (fresh checkout, no .build/vo-calibration.json),
+    leading_offset falls back to voice.leading_silence -- a real, documented
+    brand.yaml key (see brand-config.md, read by make-vo.py as
+    LEADING_OFFSET_SEC) -- instead of a bare 0.0. per_line_overhead has no
+    such brand.yaml key (it's segment padding, only ever measured from a
+    real build), so it stays 0.0 until a cache entry exists.
+
     Returns (wpm, leading_offset, per_line_overhead, source_label).
     """
     voice_cfg = cfg.get("voice", {})
@@ -70,15 +77,26 @@ def resolve_wpm(cfg):
             cache = {}
         entry = cache.get(f"{voice_id}|{rate}")
 
-    cached_leading = _safe_float(entry.get("leading_offset")) if entry else 0.0
-    cached_overhead = _safe_float(entry.get("per_line_overhead")) if entry else 0.0
+    if entry:
+        cached_leading = _safe_float(entry.get("leading_offset"))
+        cached_overhead = _safe_float(entry.get("per_line_overhead"))
+    else:
+        # Same default make-vo.py itself uses for LEADING_OFFSET_SEC.
+        cached_leading = _safe_float(voice_cfg.get("leading_silence"), default=0.2)
+        cached_overhead = 0.0
 
     explicit = voice_cfg.get("wpm")
     if explicit is not None:
-        source = "explicit voice.wpm"
-        if entry:
-            source += " (+ cached leading offset/overhead for this voice/rate)"
-        return float(explicit), cached_leading, cached_overhead, source
+        explicit_wpm = _safe_float(explicit, default=None)
+        if explicit_wpm and explicit_wpm > 0:
+            source = "explicit voice.wpm"
+            if entry:
+                source += " (+ cached leading offset/overhead for this voice/rate)"
+            return explicit_wpm, cached_leading, cached_overhead, source
+        # An explicit voice.wpm <= 0 is the same crash class as a cached
+        # zero/negative wpm (finding 6): it would reach estimate_vo_seconds
+        # and either divide by zero or produce a nonsensical estimate.
+        return 115.0, 0.0, 0.0, "uncalibrated default (115 wpm) -- voice.wpm invalid"
 
     cached_wpm = _cached_wpm(entry)
     if cached_wpm is not None:

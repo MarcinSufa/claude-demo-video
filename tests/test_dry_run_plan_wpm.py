@@ -87,12 +87,26 @@ class TestResolveWpm(unittest.TestCase):
         self.assertAlmostEqual(overhead, 0.35)
         self.assertIn("voice.wpm", source)
 
-    def test_explicit_wpm_with_no_cache_entry_has_zero_offset(self):
-        # No cache entry for this voice/rate at all -> nothing to carry over;
-        # explicit wpm alone, offsets stay 0.0 (unchanged prior behavior).
+    def test_explicit_wpm_with_no_cache_entry_falls_back_to_leading_silence(self):
+        # No cache entry for this voice/rate -> nothing measured to carry
+        # over, but voice.leading_silence is a real documented brand.yaml
+        # key (round-1 finding 4 / round-2 gap): a fresh checkout with no
+        # .build/vo-calibration.json must not silently report 0.0s of
+        # leading offset when the author already told us it's 0.2s.
+        wpm, lead, overhead, source = drp.resolve_wpm(
+            {"voice": {"wpm": 172, "leading_silence": 0.2}})
+        self.assertEqual(wpm, 172.0)
+        self.assertAlmostEqual(lead, 0.2)
+        self.assertEqual(overhead, 0.0)
+
+    def test_explicit_wpm_with_no_cache_entry_and_no_leading_silence_key(self):
+        # voice.leading_silence itself absent -> fall back to make-vo.py's
+        # own default (0.2s), never a bare 0.0 that implies no silence at
+        # all was measured.
         wpm, lead, overhead, source = drp.resolve_wpm({"voice": {"wpm": 172}})
         self.assertEqual(wpm, 172.0)
-        self.assertEqual((lead, overhead), (0.0, 0.0))
+        self.assertAlmostEqual(lead, 0.2)
+        self.assertEqual(overhead, 0.0)
 
     def test_cache_wpm_null_falls_back_uncalibrated(self):
         # MINOR finding 6 (grok-review.md #6): a cached {"wpm": null} must not
@@ -113,6 +127,19 @@ class TestResolveWpm(unittest.TestCase):
     def test_cache_wpm_negative_falls_back_uncalibrated(self):
         self._write_cache({"en-US-AndrewNeural|+0%": {"wpm": -5}})
         wpm, _, _, source = drp.resolve_wpm({"voice": {}})
+        self.assertEqual(wpm, 115.0)
+        self.assertIn("uncalibrated", source.lower())
+
+    def test_explicit_wpm_zero_falls_back_uncalibrated(self):
+        # residual 2 (grok-review2.md C2): same crash class as the cached-
+        # zero bug (finding 6) -- an explicit voice.wpm: 0 in brand.yaml must
+        # not reach estimate_vo_seconds (ZeroDivisionError there).
+        wpm, _, _, source = drp.resolve_wpm({"voice": {"wpm": 0}})
+        self.assertEqual(wpm, 115.0)
+        self.assertIn("uncalibrated", source.lower())
+
+    def test_explicit_wpm_negative_falls_back_uncalibrated(self):
+        wpm, _, _, source = drp.resolve_wpm({"voice": {"wpm": -12}})
         self.assertEqual(wpm, 115.0)
         self.assertIn("uncalibrated", source.lower())
 
