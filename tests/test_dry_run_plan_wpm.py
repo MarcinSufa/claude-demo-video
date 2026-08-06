@@ -54,23 +54,65 @@ class TestResolveWpm(unittest.TestCase):
         self.assertIn("cache", source.lower())
 
     def test_cache_miss_on_different_rate_falls_back(self):
+        # No cache entry for THIS exact voice/rate -> same "no cache entry"
+        # path as a fresh checkout: leading_offset must still fall back to
+        # voice.leading_silence (default 0.2), never a bare 0.0 (finding 1).
         self._write_cache({"en-GB-RyanNeural|-5%": {"wpm": 168.4}})
         cfg = {"voice": {"voice_id": "en-GB-RyanNeural", "rate": "+0%"}}
         wpm, lead, overhead, source = drp.resolve_wpm(cfg)
         self.assertEqual(wpm, 115.0)
-        self.assertEqual((lead, overhead), (0.0, 0.0))
+        self.assertEqual((lead, overhead), (0.2, 0.0))
         self.assertIn("uncalibrated", source.lower())
 
     def test_no_cache_file_falls_back_uncalibrated(self):
-        wpm, _, _, source = drp.resolve_wpm({"voice": {}})
+        # CRITICAL (finding 1): the common case -- fresh checkout, no
+        # .build/vo-calibration.json -- must still carry the configured
+        # leading_silence into the uncalibrated-115-wpm fallback, not
+        # discard it as 0.0.
+        wpm, lead, overhead, source = drp.resolve_wpm(
+            {"voice": {"leading_silence": 0.2}})
         self.assertEqual(wpm, 115.0)
+        self.assertAlmostEqual(lead, 0.2)
+        self.assertEqual(overhead, 0.0)
+        self.assertIn("uncalibrated", source.lower())
+
+    def test_no_cache_file_and_no_leading_silence_key_uses_default(self):
+        wpm, lead, overhead, source = drp.resolve_wpm({"voice": {}})
+        self.assertEqual(wpm, 115.0)
+        self.assertAlmostEqual(lead, 0.2)  # make-vo.py's own LEADING_OFFSET_SEC default
+        self.assertEqual(overhead, 0.0)
         self.assertIn("uncalibrated", source.lower())
 
     def test_corrupt_cache_falls_back_uncalibrated(self):
         with open(drp.CALIBRATION_CACHE, "w", encoding="utf-8") as f:
             f.write("{not json")
-        wpm, _, _, source = drp.resolve_wpm({"voice": {}})
+        wpm, lead, overhead, source = drp.resolve_wpm(
+            {"voice": {"leading_silence": 0.35}})
         self.assertEqual(wpm, 115.0)
+        self.assertAlmostEqual(lead, 0.35)
+        self.assertEqual(overhead, 0.0)
+        self.assertIn("uncalibrated", source.lower())
+
+    def test_cached_wpm_invalid_still_carries_that_entrys_leading_offset(self):
+        # CRITICAL (finding 1): a cache entry exists for this voice/rate but
+        # its wpm is unusable -- the entry's OWN measured leading_offset/
+        # per_line_overhead must still come through, not get discarded.
+        self._write_cache({"en-US-AndrewNeural|+0%": {
+            "wpm": None, "leading_offset": 0.9, "per_line_overhead": 0.22}})
+        wpm, lead, overhead, source = drp.resolve_wpm({"voice": {}})
+        self.assertEqual(wpm, 115.0)
+        self.assertAlmostEqual(lead, 0.9)
+        self.assertAlmostEqual(overhead, 0.22)
+        self.assertIn("uncalibrated", source.lower())
+
+    def test_explicit_wpm_invalid_still_falls_back_to_leading_silence(self):
+        # CRITICAL (finding 1): an unusable explicit voice.wpm must not
+        # discard the configured leading_silence either.
+        wpm, lead, overhead, source = drp.resolve_wpm(
+            {"voice": {"wpm": -5, "leading_silence": 0.4}})
+        self.assertEqual(wpm, 115.0)
+        self.assertAlmostEqual(lead, 0.4)
+        self.assertEqual(overhead, 0.0)
         self.assertIn("uncalibrated", source.lower())
 
     def test_explicit_wpm_still_applies_cached_leading_offset(self):

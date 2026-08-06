@@ -95,8 +95,11 @@ def resolve_wpm(cfg):
             return explicit_wpm, cached_leading, cached_overhead, source
         # An explicit voice.wpm <= 0 is the same crash class as a cached
         # zero/negative wpm (finding 6): it would reach estimate_vo_seconds
-        # and either divide by zero or produce a nonsensical estimate.
-        return 115.0, 0.0, 0.0, "uncalibrated default (115 wpm) -- voice.wpm invalid"
+        # and either divide by zero or produce a nonsensical estimate. It
+        # must still carry cached_leading/cached_overhead (finding 1) --
+        # only the RATE is invalid, not the leading-silence/overhead terms.
+        return (115.0, cached_leading, cached_overhead,
+                "uncalibrated default (115 wpm) -- voice.wpm invalid")
 
     cached_wpm = _cached_wpm(entry)
     if cached_wpm is not None:
@@ -104,10 +107,16 @@ def resolve_wpm(cfg):
 
     if entry is not None:
         # entry exists for this voice/rate but its wpm is missing/invalid --
-        # don't crash or silently divide by zero downstream, label it clearly.
-        return 115.0, 0.0, 0.0, "uncalibrated default (115 wpm) -- cached wpm invalid"
+        # don't crash or silently divide by zero downstream, label it
+        # clearly. Still carry that entry's own leading_offset/overhead
+        # (finding 1): only the wpm field in it is unusable.
+        return (115.0, cached_leading, cached_overhead,
+                "uncalibrated default (115 wpm) -- cached wpm invalid")
 
-    return 115.0, 0.0, 0.0, "uncalibrated default (115 wpm)"
+    # No cache entry at all -- the common case (fresh checkout, nothing built
+    # yet). cached_leading already fell back to voice.leading_silence (or its
+    # 0.2 default) above; return it rather than discarding it (finding 1).
+    return 115.0, cached_leading, cached_overhead, "uncalibrated default (115 wpm)"
 
 
 def mascot_note_for(entry):
