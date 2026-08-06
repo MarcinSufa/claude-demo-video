@@ -328,8 +328,9 @@ def check_scene_alignment(lines, ownership, tolerance=None):
     narration is "about" -- and any part of the line still playing past that
     window's end (or before its start) is the overrun. This reproduces the
     real CON-9725 incident exactly: a bug-description line starting on BEFORE
-    footage that bleeds 1.6s into AFTER footage is flagged with overrun 1.6,
-    while a tuned line landing within tolerance of the cut is not flagged.
+    footage that bleeds into AFTER footage past the 21.4s cut is flagged with
+    overrun 2.2 (line ends at 23.6s), while a tuned line landing within
+    tolerance of the cut is not flagged.
 
     Returns {"ok": bool, "violations": [...]}. Pure -- no I/O.
     """
