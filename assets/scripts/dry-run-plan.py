@@ -17,6 +17,41 @@ CONFIG = os.environ.get("DEMO_CONFIG", "config.json")
 PLAN = os.environ.get("DEMO_PLAN", "scene-plan.json")
 
 
+CALIBRATION_CACHE = "vo-calibration.json"
+
+
+def resolve_wpm(cfg):
+    """Which wpm --plan should use, and where it came from.
+
+    Resolution order (fusion-timing.md Decision/A): explicit voice.wpm always
+    wins > a calibration-cache hit for this exact (voice_id, rate) > the
+    uncalibrated 115 default. --plan prints the source so a stale/absent
+    cache is never mistaken for a calibrated estimate.
+
+    Returns (wpm, leading_offset, per_line_overhead, source_label).
+    """
+    voice_cfg = cfg.get("voice", {})
+    explicit = voice_cfg.get("wpm")
+    if explicit is not None:
+        return float(explicit), 0.0, 0.0, "explicit voice.wpm"
+
+    voice_id = voice_cfg.get("voice_id", "en-US-AndrewNeural")
+    rate = voice_cfg.get("rate", "+0%")
+    if os.path.exists(CALIBRATION_CACHE):
+        try:
+            cache = json.load(open(CALIBRATION_CACHE, encoding="utf-8"))
+        except (OSError, ValueError):
+            cache = {}
+        entry = cache.get(f"{voice_id}|{rate}")
+        if entry:
+            return (float(entry.get("wpm", 115)),
+                    float(entry.get("leading_offset", 0.0)),
+                    float(entry.get("per_line_overhead", 0.0)),
+                    "calibration cache")
+
+    return 115.0, 0.0, 0.0, "uncalibrated default (115 wpm)"
+
+
 def mascot_note_for(entry):
     """Return a short mascot annotation string for a plan entry, or ''."""
     m = entry.get("mascot_plan", {})
@@ -42,12 +77,15 @@ def main():
     subs = cfg.get("subs", {})
     speedup = float(subs.get("speedup", 1.20))
     crossfade = float(subs.get("crossfade", 0.6))
-    wpm = float(cfg.get("voice", {}).get("wpm", 115))
+    wpm, leading_offset, per_line_overhead, wpm_source = resolve_wpm(cfg)
 
-    vo_est = timing_util.estimate_vo_seconds(cfg.get("voiceover", []), wpm=wpm)
+    vo_est = timing_util.estimate_vo_seconds(
+        cfg.get("voiceover", []), wpm=wpm,
+        leading_offset=leading_offset, per_line_overhead=per_line_overhead)
     n = len(plan)
 
-    print(f"\n  Dry run -- {n} scenes, speedup {speedup}x, crossfade {crossfade}s, ~{wpm:.0f} wpm\n")
+    print(f"\n  Dry run -- {n} scenes, speedup {speedup}x, crossfade {crossfade}s, "
+          f"~{wpm:.0f} wpm ({wpm_source})\n")
     print(f"  {'scene':<22} {'type':<16} {'raw dur':>9} {'~final':>9}")
     print(f"  {'-'*22} {'-'*16} {'-'*9} {'-'*9}")
 
