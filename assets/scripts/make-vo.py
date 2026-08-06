@@ -171,7 +171,9 @@ def main():
         json.dump(cache, f, indent=2)
     print(f"  calibration: {VOICE} @ {RATE} measured ~{measured['wpm']:.0f} wpm "
           f"(per-line overhead {measured['per_line_overhead']:.2f}s) -> {cache_path}")
-    print(f"  paste to lock it in: voice:\\n    wpm: {measured['wpm']:.0f}")
+    print("  paste into brand.yaml to lock it in:")
+    print("    voice:")
+    print(f"      wpm: {measured['wpm']:.0f}")
 
 
 if __name__ == "__main__":
