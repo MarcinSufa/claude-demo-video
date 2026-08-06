@@ -92,6 +92,14 @@ def estimate_vo_seconds(voiceover, wpm=115, leading_offset=0.0, per_line_overhea
     `leading_offset` and `per_line_overhead` are calibration terms measured by
     measure_voice_rate() from a real build (see dry-run-plan.py); both default
     to 0.0, which reproduces the original word-rate-only estimate exactly.
+
+    When fed measure_voice_rate()'s own output back in, this is conservative
+    by one segment's trailing pad, not exact: per_line_overhead is an average
+    over all lines, but only the LAST line's trailing pad is missing from
+    speech_end (speech_end is last-WORD end, not segment end), and this
+    function has no way to withhold just that one line's share of the
+    average. The result lands that amount OVER the real speech_end -- safe
+    for the P0-1 truncation check this feeds, since it never under-predicts.
     """
     items = list(voiceover or [])
     if not items:
@@ -113,8 +121,32 @@ def measure_voice_rate(words_data, pause_afters, seg_durs=None):
     computes this per segment via ffprobe -- `seg_dur` -- before this is
     called). All file reading/ffprobe belongs in the caller.
 
-    wpm is fit from the AGGREGATE totals: speaking_seconds = speech_end -
-    leading_offset - sum(pause_afters); wpm = total_words / speaking_seconds * 60.
+    wpm's fit depends on whether `seg_durs` is available:
+
+    - Without `seg_durs`: wpm is fit from the AGGREGATE totals,
+      speaking_seconds = speech_end - leading_offset - sum(pause_afters);
+      wpm = total_words / speaking_seconds * 60. This "speaking_seconds"
+      already includes whatever segment padding sits inside speech_end --
+      there is no independent overhead measurement available yet, so it is
+      absorbed into the rate rather than reported separately.
+    - With `seg_durs`: wpm is instead fit from PURE speaking time -- the sum
+      of each line's own word span (line_end - line_start), excluding
+      padding entirely. This keeps wpm and per_line_overhead independent and
+      additive, so estimate_vo_seconds's
+      `words/wpm*60 + leading + pauses + overhead*n` reconstructs speech_end
+      to within one segment's trailing pad, instead of double-counting the
+      padding that a speech_end-based wpm already absorbed (grok-review2.md
+      finding A). It is not exact: per_line_overhead is an AVERAGE across
+      lines, but the last line's own trailing pad is the one term
+      speech_end never includes (speech_end is last-WORD end, not segment
+      end) and estimate_vo_seconds has no way to single that line out from
+      the average, so the reconstruction lands exactly that amount over
+      speech_end -- conservative (never truncates), see estimate_vo_seconds.
+      NOTE: this makes the reported wpm READ HIGHER than the no-seg_durs
+      fit for the same recording -- the two are measuring different things
+      (pure articulation rate vs. rate-including-padding) and must not be
+      compared as if they were the same quantity.
+
     leading_offset defaults to the first line's line_start when vo-words.json's
     own "leading_offset" key is absent.
 
@@ -145,10 +177,15 @@ def measure_voice_rate(words_data, pause_afters, seg_durs=None):
     per_line_overhead = 0.0
     if seg_durs and len(seg_durs) == len(lines) and lines:
         residuals = []
+        word_spans = []
         for ln, seg_dur in zip(lines, seg_durs):
             word_span = float(ln["line_end"]) - float(ln["line_start"])
+            word_spans.append(word_span)
             residuals.append(float(seg_dur) - word_span)
         per_line_overhead = sum(residuals) / len(residuals)
+        pure_speaking_seconds = sum(word_spans)
+        if pure_speaking_seconds > 0:
+            wpm = total_words / pure_speaking_seconds * 60
 
     return {
         "wpm": wpm,
@@ -159,6 +196,30 @@ def measure_voice_rate(words_data, pause_afters, seg_durs=None):
         "speech_end": speech_end,
         "line_count": len(lines),
     }
+
+
+def calibration_paste_lines(measured):
+    """Lines make-vo.py prints so an author has everything --plan needs, even
+    without vo-calibration.json on disk (grok-review2.md residual 1: a clean
+    `.build` -- e.g. a fresh checkout with only brand.yaml committed -- that
+    pastes just `wpm:` silently loses leading_offset/per_line_overhead).
+
+    `wpm` and leading offset both have a brand.yaml key (`voice.wpm`,
+    `voice.leading_silence` -- see resolve_wpm in dry-run-plan.py, which
+    falls back to the latter when no cache entry exists). per_line_overhead
+    has no brand.yaml key at all -- it is supplied ONLY by the cache file,
+    so this makes that (narrower) limitation explicit instead of letting the
+    paste imply nothing but wpm survives a fresh checkout.
+    """
+    return [
+        "  paste into brand.yaml to lock in the rate:",
+        "    voice:",
+        f"      wpm: {measured['wpm']:.0f}",
+        f"      leading_silence: {measured['leading_offset']:.2f}",
+        f"  (per-line overhead {measured['per_line_overhead']:.2f}s has no "
+        f"brand.yaml key -- keep vo-calibration.json in .build/ so --plan "
+        f"can still read it; without that file it defaults to 0.0)",
+    ]
 
 
 def _composite_local_cut(entry, raw_dur, speedup, composite_speedup):

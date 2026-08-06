@@ -283,6 +283,75 @@ class MeasureVoiceRate(unittest.TestCase):
         result = timing_util.measure_voice_rate(words, [0.5], seg_durs=seg_durs)
         self.assertAlmostEqual(result["per_line_overhead"], 0.5, places=3)
 
+    def test_wpm_refit_from_pure_word_spans_when_seg_durs_present(self):
+        # grok-review2.md finding A: without seg_durs, wpm is fit from
+        # speech_end - leading - pauses, which already absorbs segment
+        # padding -- so adding per_line_overhead on top double-counts it.
+        # With seg_durs, wpm must instead be fit from the sum of pure word
+        # spans (excluding padding). Fixture (segment layout, not just word
+        # timestamps, so the gap between lines includes real overhead the
+        # OLD fit would have silently folded into "speaking time"):
+        #   line1: seg_dur=3.0, leading pad 0.2, word_span 2.0 -> line 1.2-3.2
+        #   pause_after 0.5
+        #   line2: seg_dur=2.5, leading pad 0.3, word_span 2.0 -> line 4.8-6.8
+        # speech_end=6.8. OLD fit: (6.8-1.0-0.5)=5.3s -> 20/5.3*60=226.4wpm.
+        # NEW fit: pure word spans 2.0+2.0=4.0s -> 20/4.0*60=300wpm.
+        words = {"leading_offset": 1.0, "lines": [
+            {"line_start": 1.2, "line_end": 3.2, "words": ["x"] * 10},
+            {"line_start": 4.8, "line_end": 6.8, "words": ["x"] * 10},
+        ]}
+        result = timing_util.measure_voice_rate(words, [0.5], seg_durs=[3.0, 2.5])
+        self.assertAlmostEqual(result["wpm"], 300.0, places=3)
+        self.assertNotAlmostEqual(result["wpm"], 226.4, places=1)
+
+    def test_wpm_refit_unaffected_by_asymmetric_padding(self):
+        # Same 20 words / 4.0s of pure word spans, but the 1.7s of segment
+        # overhead is split unevenly (0.2s on line1, 1.5s on line2) instead
+        # of evenly. wpm must still land on 300 -- it must depend only on
+        # word spans, not on how the padding happens to be distributed.
+        #   line1: seg_dur=2.2, leading pad 0.1, word_span 2.0 -> line 1.1-3.1
+        #   pause_after 0.5
+        #   line2: seg_dur=3.5, leading pad 0.5, word_span 2.0 -> line 4.2-6.2
+        words = {"leading_offset": 1.0, "lines": [
+            {"line_start": 1.1, "line_end": 3.1, "words": ["x"] * 10},
+            {"line_start": 4.2, "line_end": 6.2, "words": ["x"] * 10},
+        ]}
+        result = timing_util.measure_voice_rate(words, [0.5], seg_durs=[2.2, 3.5])
+        self.assertAlmostEqual(result["wpm"], 300.0, places=3)
+
+    def test_wpm_unchanged_without_seg_durs(self):
+        # No independent measurement supplied -> keep the old (speech_end
+        # based) fit; this is the path production already relies on when
+        # make-vo hasn't run yet (dry-run-plan.py --plan before any build).
+        words = {"lines": [{"line_start": 1.2, "line_end": 43.9, "words": ["x"] * 100}]}
+        result = timing_util.measure_voice_rate(words, [7.8])
+        self.assertAlmostEqual(result["wpm"], 172.0, delta=2.0)
+
+
+class CalibrationPasteLines(unittest.TestCase):
+    def test_includes_wpm_and_notes_cache_only_offsets(self):
+        # residual 1 (grok-review2.md C): make-vo.py's paste hint used to
+        # print only `wpm:`, silently dropping leading_offset/per_line_overhead
+        # for an author who pastes it into a fresh checkout with no cache
+        # file on disk. Print (or clearly document) the full calibration.
+        measured = {"wpm": 183.0, "leading_offset": 1.2, "per_line_overhead": 0.42}
+        lines = timing_util.calibration_paste_lines(measured)
+        text = "\n".join(lines)
+        self.assertIn("wpm: 183", text)
+        self.assertIn("1.2", text)
+        self.assertIn("0.42", text)
+
+    def test_leading_offset_is_pasted_as_a_real_brand_yaml_key(self):
+        # voice.leading_silence IS a documented brand.yaml key (unlike
+        # per_line_overhead, which has none) -- the hint must paste it as
+        # an actual key resolve_wpm can read back, not just mention the
+        # number in a parenthetical, and must not claim it has no key.
+        measured = {"wpm": 183.0, "leading_offset": 1.2, "per_line_overhead": 0.42}
+        lines = timing_util.calibration_paste_lines(measured)
+        text = "\n".join(lines)
+        self.assertIn("leading_silence: 1.20", text)
+        self.assertNotIn("leading offset", text.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
