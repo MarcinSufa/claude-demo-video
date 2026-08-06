@@ -102,7 +102,10 @@ def _check_scene_alignment(words):
     try:
         plan_path = os.environ.get("DEMO_PLAN", "scene-plan.json")
         config_path = os.environ.get("DEMO_CONFIG", "config.json")
-        if not (os.path.exists(plan_path) and os.path.exists(config_path)):
+        missing = [p for p in (plan_path, config_path) if not os.path.exists(p)]
+        if missing:
+            print(f"  timing: scene alignment check skipped "
+                  f"({', '.join(missing)} not found)")
             return
         plan = json.load(open(plan_path, encoding="utf-8"))["scenes"]
         cfg = json.load(open(config_path, encoding="utf-8"))
@@ -129,9 +132,14 @@ def _check_scene_alignment(words):
             if window.get("warning"):
                 print(f"  timing: {window['warning']}")
 
-        result = timing_util.check_scene_alignment(words.get("lines") or [], ownership)
+        lines = words.get("lines") or []
+        result = timing_util.check_scene_alignment(lines, ownership)
         for violation in result.get("violations", []):
             print(f"  timing: WARNING scene alignment -- {violation['message']}")
+        if result["ok"]:
+            print(f"  timing: scene alignment OK -- {len(lines)} voiceover "
+                  f"line(s) checked against {len(ownership)} scene "
+                  f"boundaries (incl. composite sub-boundaries), no overruns")
     except Exception as exc:  # noqa: BLE001 -- must degrade to a warning, never break the build
         print(f"  timing: scene alignment check skipped (error: {exc})")
 

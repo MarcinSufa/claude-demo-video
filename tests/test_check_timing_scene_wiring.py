@@ -161,5 +161,93 @@ class StaleWordsHardFail(unittest.TestCase):
         self.assertEqual(rc, 0)
 
 
+class SceneAlignmentObservability(unittest.TestCase):
+    """Two silent paths in _check_scene_alignment made a passing check
+    indistinguishable from a check that never ran:
+
+    1. A clean project (no violations) printed nothing on success -- the
+       whole point of this feature is to catch a misalignment that once
+       slipped through silently, so shipping the confirmation itself
+       invisible defeats the purpose.
+    2. Missing scene-plan.json/config.json returned with no output at all,
+       unlike the sibling missing-.normalized-clip skip a few lines below
+       which already prints its reason.
+    """
+
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        os.chdir(self._tmp.name)
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        self._tmp.cleanup()
+
+    def _write_clean_3scene_project(self):
+        scenes = [{"type": "html_mockup"}, {"type": "html_mockup"},
+                  {"type": "endcards"}]
+        with open("scene-plan.json", "w", encoding="utf-8") as f:
+            json.dump({"scenes": scenes}, f)
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump({"subs": {"speedup": 1.0, "crossfade": 0.6}}, f)
+        os.makedirs(".normalized", exist_ok=True)
+        for i in range(1, len(scenes) + 1):
+            open(f".normalized/s{i}.mp4", "wb").close()
+        return scenes
+
+    def test_clean_project_prints_confirmation_with_real_counts(self):
+        self._write_clean_3scene_project()
+        module = _load_check_timing()
+        durations = iter([8.0, 8.0, 8.0])
+        module._probe_duration = lambda path: next(durations)
+
+        # Two lines, both comfortably inside their scene's window -- no
+        # overruns expected.
+        words = {"lines": [
+            {"line_start": 1.0, "line_end": 3.0, "text": "a"},
+            {"line_start": 10.0, "line_end": 12.0, "text": "b"},
+        ]}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            module._check_scene_alignment(words)
+        output = buf.getvalue()
+
+        self.assertNotIn("WARNING", output)
+        # 3 scenes, no composite splits -> 3 ownership windows.
+        self.assertIn("2 voiceover line", output)
+        self.assertIn("3 scene boundar", output)
+        self.assertIn("no overruns", output)
+
+    def test_missing_scene_plan_prints_skip_reason_naming_the_file(self):
+        # config.json present, scene-plan.json missing.
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump({"subs": {"speedup": 1.0, "crossfade": 0.6}}, f)
+        module = _load_check_timing()
+
+        words = {"lines": []}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            module._check_scene_alignment(words)
+        output = buf.getvalue()
+
+        self.assertIn("timing: scene alignment check skipped", output)
+        self.assertIn("scene-plan.json", output)
+
+    def test_missing_config_prints_skip_reason_naming_the_file(self):
+        # scene-plan.json present, config.json missing.
+        with open("scene-plan.json", "w", encoding="utf-8") as f:
+            json.dump({"scenes": []}, f)
+        module = _load_check_timing()
+
+        words = {"lines": []}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            module._check_scene_alignment(words)
+        output = buf.getvalue()
+
+        self.assertIn("timing: scene alignment check skipped", output)
+        self.assertIn("config.json", output)
+
+
 if __name__ == "__main__":
     unittest.main()
