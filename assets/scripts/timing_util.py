@@ -199,7 +199,6 @@ def scene_spans(raw_durations, speedup=1.0, crossfade=0.6, scene_plan=None):
     if n == 0:
         return []
     spans = []
-    naive_cursor = 0.0
     prev_end = None
     for i, raw in enumerate(raws):
         dur = raw / speedup
@@ -209,12 +208,17 @@ def scene_spans(raw_durations, speedup=1.0, crossfade=0.6, scene_plan=None):
         entry = scene_plan[i] if scene_plan and i < len(scene_plan) else None
         local_cut = _composite_local_cut(entry, raw)
         if local_cut is not None and 0.0 < local_cut < raw:
-            boundary = naive_cursor + local_cut / speedup
+            # boundary is relative to this scene's crossfade-shifted `start`,
+            # not a naive unshifted cumulative sum -- every scene after the
+            # first has already been pulled left by `i * crossfade` worth of
+            # overlap with its predecessors, and the internal cut must move
+            # with it (see brief-timing.md Problem B / CON evidence sampling
+            # the real render frame-by-frame).
+            boundary = start + local_cut / speedup
             spans.append((start, boundary, {"hard_right": True}))
             spans.append((boundary, end, {"hard_left": True}))
         else:
             spans.append((start, end, {}))
-        naive_cursor += dur
     return spans
 
 

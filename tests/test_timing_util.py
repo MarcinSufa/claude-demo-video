@@ -136,6 +136,20 @@ class SceneSpans(unittest.TestCase):
         self.assertEqual(len(spans), 4)
         self.assertAlmostEqual(spans[-1][1], 46.8, places=6)
 
+    def test_internal_cut_is_crossfade_shifted_not_naive_cumulative(self):
+        # The internal BEFORE->AFTER cut must be measured from c2's own
+        # crossfade-shifted start (7.4), not a naive unshifted cumulative
+        # start (8.0). 7.4 + 14.0 = 21.4, confirmed against the real
+        # rendered mp4 (BEFORE banner at 21.3s, AFTER banner at 21.5s).
+        # 8.0 + 14.0 = 22.0 is the bug this test guards against regressing to.
+        scenes = [{"type": "html_mockup"},
+                  {"type": "before_after", "layout": "sequential", "cut_at": 14.0},
+                  {"type": "endcards"}]
+        spans = timing_util.scene_spans([8.0, 28.0, 12.0], 1.0, 0.6, scenes)
+        # spans: c1, c2-before (7.4->cut), c2-after (cut->35.4), c3.
+        self.assertAlmostEqual(spans[1][1], 21.4, places=6)
+        self.assertAlmostEqual(spans[2][0], 21.4, places=6)
+
 
 class SceneOwnership(unittest.TestCase):
     def test_short_scene_gets_degeneracy_warning(self):
@@ -152,6 +166,12 @@ class SceneOwnership(unittest.TestCase):
 
 class CheckSceneAlignment(unittest.TestCase):
     def test_reference_defect_is_flagged_with_correct_overrun(self):
+        # The internal cut of c2 (before_after, sequential, cut_at=14.0) sits
+        # at start_1 + 14.0 = 7.4 + 14.0 = 21.4 -- confirmed by sampling the
+        # real rendered mp4 frame by frame (BEFORE banner still on screen at
+        # 21.3s, AFTER banner on screen at 21.5s). An unshifted cumulative
+        # start (8.0 + 14.0 = 22.0) ignores the preceding crossfade overlap
+        # and is the bug this test used to encode. 23.6 - 21.4 = 2.2s overrun.
         scenes = [{"type": "html_mockup"},
                   {"type": "before_after", "layout": "sequential", "cut_at": 14.0},
                   {"type": "endcards"}]
@@ -161,16 +181,17 @@ class CheckSceneAlignment(unittest.TestCase):
             [{"line_start": 21.2, "line_end": 23.6}], ownership)
         self.assertFalse(bad["ok"])
         self.assertEqual(len(bad["violations"]), 1)
-        self.assertAlmostEqual(bad["violations"][0]["overrun"], 1.6, places=1)
+        self.assertAlmostEqual(bad["violations"][0]["overrun"], 2.2, places=1)
 
     def test_tuned_line_within_tolerance_is_not_flagged(self):
+        # Straddles the true 21.4 cut by ~0.1s each side, within tolerance.
         scenes = [{"type": "html_mockup"},
                   {"type": "before_after", "layout": "sequential", "cut_at": 14.0},
                   {"type": "endcards"}]
         spans = timing_util.scene_spans([8.0, 28.0, 12.0], 1.0, 0.6, scenes)
         ownership = timing_util.scene_ownership(spans, 0.6)
         good = timing_util.check_scene_alignment(
-            [{"line_start": 21.9, "line_end": 22.1}], ownership)
+            [{"line_start": 21.3, "line_end": 21.5}], ownership)
         self.assertTrue(good["ok"])
 
     def test_no_lines_is_ok(self):
