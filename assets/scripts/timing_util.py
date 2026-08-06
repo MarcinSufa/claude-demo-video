@@ -166,7 +166,24 @@ def measure_voice_rate(words_data, pause_afters, seg_durs=None):
     internal_pauses, speech_end, line_count.
     """
     lines = list(words_data.get("lines") or [])
-    total_words = sum(len(ln.get("words") or []) for ln in lines)
+    # Count words the same way estimate_vo_seconds does -- str.split() on the
+    # authored line text -- not len(ln["words"]), the raw edge-tts
+    # WordBoundary token count (finding 2). The two disagree on hyphenated
+    # words and contractions (edge-tts emits separate tokens for "well-known"
+    # and "can't"'s suffix), which inflates the WordBoundary count relative
+    # to split(). A wpm fit against that inflated count reads too high, and
+    # estimate_vo_seconds -- which always divides a split()-word count by
+    # wpm -- then UNDER-predicts real narration length: the exact
+    # silent-truncation failure this whole subsystem exists to catch. Fitting
+    # wpm in the same unit estimate_vo_seconds consumes closes that gap.
+    # Every real vo-words.json line carries "text" (make-vo.py always writes
+    # it -- see all_lines construction); the len(words) fallback only
+    # matters for a caller that hands in a words-token list with no text
+    # field at all, which never happens in production.
+    total_words = sum(
+        len(str(ln["text"]).split()) if ln.get("text") else len(ln.get("words") or [])
+        for ln in lines
+    )
     leading_offset = float(words_data.get(
         "leading_offset", lines[0]["line_start"] if lines else 0.0))
     internal_pauses = sum(float(p) for p in (pause_afters or []))
@@ -320,6 +337,23 @@ def scene_spans(raw_durations, speedup=1.0, crossfade=0.6, scene_plan=None,
             boundary = start + local_cut / speedup
             spans.append((start, boundary, {"hard_right": True}))
             spans.append((boundary, end, {"hard_left": True}))
+        elif local_cut is not None:
+            # entry WAS a recognised composite before_after/sequential scene
+            # (that's the only way _composite_local_cut returns non-None) but
+            # the converted local_cut fell outside this scene's own raw
+            # length -- typically an authored half_duration that no longer
+            # fits once speedup pushes the scene's real on-screen length
+            # down (finding 3). Dropping the sub-boundary here is still
+            # correct (a negative-length sub-span would be nonsensical), but
+            # silently is not: this is exactly the kind of internal cut
+            # Problem B exists to catch, so surface it as a warning the
+            # caller can print (see scene_ownership()).
+            spans.append((start, end, {"warning": (
+                f"warning: composite cut at scene {i + 1} ({start:.2f}-{end:.2f}s) "
+                f"fell out of range (local_cut={local_cut:.2f}s, raw={raw:.2f}s) "
+                f"and was dropped -- the internal before/after boundary is not "
+                f"being checked for this scene"
+            )}))
         else:
             spans.append((start, end, {}))
     return spans
@@ -349,14 +383,19 @@ def scene_ownership(spans, crossfade=0.6):
         left_shrink = 0.0 if (i == 0 or hard_left) else tolerance
         right_shrink = 0.0 if (i == n - 1 or hard_right) else tolerance
         dur = end - start
-        warning = None
+        # A dropped-composite-cut warning (scene_spans(), finding 3) travels
+        # in span meta, not computed here -- carry it through so the caller
+        # (check-timing.py) only has to check one place. Degeneracy below can
+        # co-occur with it; keep both instead of one clobbering the other.
+        warning = meta.get("warning")
         if dur < 2 * crossfade:
-            warning = (
+            degeneracy_warning = (
                 f"warning: scene span {start:.2f}-{end:.2f}s ({dur:.2f}s) is "
                 f"shorter than 2*crossfade ({2 * crossfade:.2f}s) -- the "
                 f"chained xfade overlaps itself here; treat this scene's "
                 f"timing as unreliable"
             )
+            warning = f"{warning}; {degeneracy_warning}" if warning else degeneracy_warning
         windows.append({
             "index": i,
             "raw_start": start,

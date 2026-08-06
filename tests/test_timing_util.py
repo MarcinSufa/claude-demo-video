@@ -182,6 +182,32 @@ class SceneSpans(unittest.TestCase):
         wrong_cut = start_1 + 14.0
         self.assertFalse(any(abs(e - wrong_cut) < 1e-6 for e in edges))
 
+    def test_out_of_range_composite_cut_is_dropped_with_a_warning_not_silently(self):
+        # finding 3 + finding 5: at a high project speedup, an authored
+        # half_duration (always pre-speedup seconds) can convert to a
+        # local_cut that no longer fits inside the scene's own (post-speedup)
+        # probed length -- the composite_cut_matches_check_timing_call_shape
+        # case above, taken past the point where it still fits. The internal
+        # sub-boundary must be silently dropped (0.0 < local_cut < raw still
+        # guards scene_spans from emitting a nonsensical negative-length
+        # sub-span) but NOT silently -- meta must carry a warning so the
+        # caller can surface it instead of the check quietly doing nothing.
+        real_speedup = 2.5
+        raw = [8.0, 28.0, 12.0]
+        probed = [r / real_speedup for r in raw]
+        scenes = [{"type": "html_mockup"},
+                  # 30.0 pre-speedup exceeds c2's own 28.0 raw footage --
+                  # local_cut = 30.0/2.5 = 12.0s >= probed[1] (11.2s).
+                  {"type": "before_after", "layout": "sequential", "half_duration": 30.0},
+                  {"type": "endcards"}]
+        spans = timing_util.scene_spans(probed, speedup=1.0, crossfade=0.6,
+                                         scene_plan=scenes, composite_speedup=real_speedup)
+        # No split -- still exactly one span per scene.
+        self.assertEqual(len(spans), 3)
+        meta = spans[1][2]
+        self.assertTrue(meta.get("warning"), "dropped composite cut must carry a warning")
+        self.assertIn("cut", meta["warning"].lower())
+
 
 class SceneOwnership(unittest.TestCase):
     def test_short_scene_gets_degeneracy_warning(self):
@@ -194,6 +220,23 @@ class SceneOwnership(unittest.TestCase):
         spans = timing_util.scene_spans([8.0, 28.0, 12.0], 1.0, 0.6)
         ownership = timing_util.scene_ownership(spans, 0.6)
         self.assertTrue(all(not w["warning"] for w in ownership))
+
+    def test_dropped_composite_cut_warning_propagates_into_ownership_window(self):
+        # finding 3: scene_spans() attaches a warning to the span meta when a
+        # composite sub-boundary is dropped as out-of-range; scene_ownership
+        # (what check-timing.py actually iterates and prints) must not lose
+        # that warning on the way through.
+        real_speedup = 2.5
+        raw = [8.0, 28.0, 12.0]
+        probed = [r / real_speedup for r in raw]
+        scenes = [{"type": "html_mockup"},
+                  {"type": "before_after", "layout": "sequential", "half_duration": 30.0},
+                  {"type": "endcards"}]
+        spans = timing_util.scene_spans(probed, speedup=1.0, crossfade=0.6,
+                                         scene_plan=scenes, composite_speedup=real_speedup)
+        ownership = timing_util.scene_ownership(spans, 0.6)
+        self.assertTrue(ownership[1]["warning"])
+        self.assertIn("cut", ownership[1]["warning"].lower())
 
 
 class CheckSceneAlignment(unittest.TestCase):
@@ -233,11 +276,74 @@ class CheckSceneAlignment(unittest.TestCase):
         self.assertTrue(result["ok"])
 
 
+class MeasureVoiceRateTokenization(unittest.TestCase):
+    """Pins the finding-2 tokenizer mismatch: measure_voice_rate used to count
+    words as len(ln["words"]) (edge-tts WordBoundary tokens), while
+    estimate_vo_seconds counts len(text.split()). Hyphenated words and
+    contractions tokenize differently under the two rules -- edge-tts emits
+    a separate WordBoundary for "well-known" (well / - / known) and for
+    "can't" (can / 't) where split() sees one token each. That inflates the
+    WordBoundary token count relative to the split()-word count, so a
+    words-token-based wpm reads artificially HIGH.
+
+    Direction of the error matters: a high measured wpm, fed back into
+    estimate_vo_seconds (which divides by wpm), produces a LOW estimate --
+    i.e. the estimator predicts the narration is SHORTER than it really is,
+    which is exactly the silent-truncation risk this subsystem exists to
+    prevent.
+    """
+
+    def test_hyphen_and_contraction_line_measures_split_word_rate_not_token_rate(self):
+        # text.split() == 5 words: "top-notch", "can't", "miss", "it's", "great".
+        # edge-tts WordBoundary tokens for the same line split hyphens and
+        # contraction suffixes into their own events -- 9 tokens here (a
+        # realistic over-count, not an exact model of edge-tts internals).
+        text = "top-notch can't miss it's great"
+        words_data = {"lines": [{
+            "line_start": 0.0, "line_end": 10.8, "text": text,
+            "words": ["top", "-", "notch", "can", "'t", "miss", "it", "'s", "great"],
+        }]}
+        result = timing_util.measure_voice_rate(words_data, [])
+
+        # The tokenizer-mismatch bug reports total_words=9 (the WordBoundary
+        # count) and wpm = 9/10.8*60 = 50.0 -- both wrong for a caller that
+        # will divide SPLIT-word counts by this wpm.
+        self.assertEqual(result["total_words"], 5,
+                          "total_words must use the same split()-word rule "
+                          "estimate_vo_seconds uses, not the raw WordBoundary "
+                          "token count")
+        self.assertAlmostEqual(result["wpm"], 5 / 10.8 * 60, places=2)
+        self.assertNotAlmostEqual(result["wpm"], 50.0, places=1)
+
+    def test_inflated_token_wpm_would_under_predict_real_duration(self):
+        # Concrete demonstration of the under-prediction: reapply the
+        # measured wpm to the SAME split()-word count estimate_vo_seconds
+        # would use for this line, and it must reconstruct the real 10.8s
+        # speaking time -- not the ~6.0s the token-count-inflated wpm (50.0)
+        # would have produced (5 words / 50.0 wpm * 60 = 6.0s, a 4.8s /
+        # 44% under-prediction of the real 10.8s).
+        text = "top-notch can't miss it's great"
+        words_data = {"lines": [{
+            "line_start": 0.0, "line_end": 10.8, "text": text,
+            "words": ["top", "-", "notch", "can", "'t", "miss", "it", "'s", "great"],
+        }]}
+        result = timing_util.measure_voice_rate(words_data, [])
+        voiceover = [{"text": text, "pause_after": 0.0}]
+        estimate = timing_util.estimate_vo_seconds(voiceover, wpm=result["wpm"])
+        self.assertAlmostEqual(estimate, 10.8, delta=0.05)
+        # The buggy (token-based) reconstruction would have landed here --
+        # prove the fixed estimate is NOT this under-prediction.
+        buggy_estimate = 5 / 50.0 * 60
+        self.assertGreater(estimate, buggy_estimate + 1.0)
+
+
 class MeasureVoiceRate(unittest.TestCase):
     def test_matches_the_briefs_measured_rate(self):
         # 100 words, 7.8s internal pauses, 1.2s leading offset, 43.9s speech-end
         # -> effective rate ~172 wpm (brief-timing.md Problem A).
-        words = {"lines": [{"line_start": 1.2, "line_end": 43.9, "words": ["x"] * 100}]}
+        text = " ".join(["x"] * 100)
+        words = {"lines": [{"line_start": 1.2, "line_end": 43.9, "text": text,
+                             "words": ["x"] * 100}]}
         result = timing_util.measure_voice_rate(words, [7.8])
         self.assertAlmostEqual(result["wpm"], 172.0, delta=2.0)
 
@@ -248,7 +354,9 @@ class MeasureVoiceRate(unittest.TestCase):
     def test_per_line_overhead_is_zero_without_seg_durs(self):
         # No independent measurement supplied -> report "not measured" (0.0),
         # never a tautological identity (see below).
-        words = {"lines": [{"line_start": 1.2, "line_end": 43.9, "words": ["x"] * 100}]}
+        text = " ".join(["x"] * 100)
+        words = {"lines": [{"line_start": 1.2, "line_end": 43.9, "text": text,
+                             "words": ["x"] * 100}]}
         result = timing_util.measure_voice_rate(words, [7.8])
         self.assertEqual(result["per_line_overhead"], 0.0)
 
@@ -262,8 +370,8 @@ class MeasureVoiceRate(unittest.TestCase):
         # (make-vo.py's seg_dur, independent of the word-timing fit) must
         # produce a large, non-zero measured overhead -- not an identity.
         words = {"lines": [
-            {"line_start": 0.0, "line_end": 2.0, "words": ["x"] * 10},
-            {"line_start": 2.5, "line_end": 4.5, "words": ["x"] * 10},
+            {"line_start": 0.0, "line_end": 2.0, "text": " ".join(["x"] * 10), "words": ["x"] * 10},
+            {"line_start": 2.5, "line_end": 4.5, "text": " ".join(["x"] * 10), "words": ["x"] * 10},
         ]}
         # Real segment mp3s are each 1.0s longer than their word span (edge-tts
         # padding) -- an INDEPENDENT measurement, not derived from the wpm fit.
@@ -276,8 +384,8 @@ class MeasureVoiceRate(unittest.TestCase):
         # this is the actual thing D4 asked to measure (fusion-timing.md D4:
         # edge-tts segment padding that scales with line count, not word count).
         words = {"lines": [
-            {"line_start": 0.0, "line_end": 2.0, "words": ["x"] * 10},
-            {"line_start": 2.5, "line_end": 4.5, "words": ["x"] * 10},
+            {"line_start": 0.0, "line_end": 2.0, "text": " ".join(["x"] * 10), "words": ["x"] * 10},
+            {"line_start": 2.5, "line_end": 4.5, "text": " ".join(["x"] * 10), "words": ["x"] * 10},
         ]}
         seg_durs = [2.2, 2.8]  # paddings: 0.2s and 0.8s -> mean 0.5s
         result = timing_util.measure_voice_rate(words, [0.5], seg_durs=seg_durs)
@@ -297,8 +405,8 @@ class MeasureVoiceRate(unittest.TestCase):
         # speech_end=6.8. OLD fit: (6.8-1.0-0.5)=5.3s -> 20/5.3*60=226.4wpm.
         # NEW fit: pure word spans 2.0+2.0=4.0s -> 20/4.0*60=300wpm.
         words = {"leading_offset": 1.0, "lines": [
-            {"line_start": 1.2, "line_end": 3.2, "words": ["x"] * 10},
-            {"line_start": 4.8, "line_end": 6.8, "words": ["x"] * 10},
+            {"line_start": 1.2, "line_end": 3.2, "text": " ".join(["x"] * 10), "words": ["x"] * 10},
+            {"line_start": 4.8, "line_end": 6.8, "text": " ".join(["x"] * 10), "words": ["x"] * 10},
         ]}
         result = timing_util.measure_voice_rate(words, [0.5], seg_durs=[3.0, 2.5])
         self.assertAlmostEqual(result["wpm"], 300.0, places=3)
@@ -313,8 +421,8 @@ class MeasureVoiceRate(unittest.TestCase):
         #   pause_after 0.5
         #   line2: seg_dur=3.5, leading pad 0.5, word_span 2.0 -> line 4.2-6.2
         words = {"leading_offset": 1.0, "lines": [
-            {"line_start": 1.1, "line_end": 3.1, "words": ["x"] * 10},
-            {"line_start": 4.2, "line_end": 6.2, "words": ["x"] * 10},
+            {"line_start": 1.1, "line_end": 3.1, "text": " ".join(["x"] * 10), "words": ["x"] * 10},
+            {"line_start": 4.2, "line_end": 6.2, "text": " ".join(["x"] * 10), "words": ["x"] * 10},
         ]}
         result = timing_util.measure_voice_rate(words, [0.5], seg_durs=[2.2, 3.5])
         self.assertAlmostEqual(result["wpm"], 300.0, places=3)
@@ -323,7 +431,9 @@ class MeasureVoiceRate(unittest.TestCase):
         # No independent measurement supplied -> keep the old (speech_end
         # based) fit; this is the path production already relies on when
         # make-vo hasn't run yet (dry-run-plan.py --plan before any build).
-        words = {"lines": [{"line_start": 1.2, "line_end": 43.9, "words": ["x"] * 100}]}
+        text = " ".join(["x"] * 100)
+        words = {"lines": [{"line_start": 1.2, "line_end": 43.9, "text": text,
+                             "words": ["x"] * 100}]}
         result = timing_util.measure_voice_rate(words, [7.8])
         self.assertAlmostEqual(result["wpm"], 172.0, delta=2.0)
 
@@ -363,9 +473,12 @@ class RoundTripEstimateMatchesMeasurement(unittest.TestCase):
         # comes back trailing_pad_n seconds OVER speech_end. See
         # estimate_vo_seconds's docstring for why this is accepted.
         words_data = {"leading_offset": 1.2, "lines": [
-            {"line_start": 1.4, "line_end": 3.9, "words": ["w"] * 8},
-            {"line_start": 4.8, "line_end": 7.0, "words": ["w"] * 7},
-            {"line_start": 8.2, "line_end": 10.2, "words": ["w"] * 6},
+            {"line_start": 1.4, "line_end": 3.9, "text": " ".join(["w"] * 8),
+             "words": ["w"] * 8},
+            {"line_start": 4.8, "line_end": 7.0, "text": " ".join(["w"] * 7),
+             "words": ["w"] * 7},
+            {"line_start": 8.2, "line_end": 10.2, "text": " ".join(["w"] * 6),
+             "words": ["w"] * 6},
         ]}
         pause_afters = [0.5, 0.7]
         seg_durs = [3.0, 2.8, 2.3]

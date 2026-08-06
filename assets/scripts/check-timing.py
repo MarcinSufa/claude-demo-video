@@ -114,7 +114,12 @@ def _check_scene_alignment(words):
         for i in range(1, len(plan) + 1):
             clip = f".normalized/s{i}.mp4"
             if not os.path.exists(clip):
-                return  # not every scene normalized yet (e.g. --only) -- skip quietly
+                # Not every scene normalized yet (e.g. --only) -- skip, but
+                # say so: a silent skip here hides the exact per-scene
+                # alignment check (Problem B) this whole function exists to
+                # run (finding 3).
+                print(f"  timing: scene alignment check skipped ({clip} not built yet)")
+                return
             durs.append(_probe_duration(clip))
 
         spans = timing_util.scene_spans(durs, speedup=1.0, crossfade=crossfade,
