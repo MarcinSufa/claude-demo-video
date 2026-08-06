@@ -34,17 +34,29 @@ step() {                       # step <percent> <label...>
 
 [ -f brand.yaml ] || { echo "Missing brand.yaml — run /demo-video init or copy assets/brand.example.yaml"; exit 1; }
 
-# Stale-artifact guard: a project root can accumulate an OLD vo-words.json /
-# vo.mp3 from a previous skill version or a hand-run script. Nothing in the
-# build reads $ROOT/vo-words.json or $ROOT/vo.mp3 (everything runs inside
-# .build/, which regenerates its own copies every build) -- but a human
-# reading the root file by hand gets silently wrong data. Warn, never delete:
-# vo.mp3 at the project root is a documented user deliverable (SKILL.md).
-if [ -f "$ROOT/vo-words.json" ] || [ -f "$ROOT/vo.mp3" ]; then
-  echo "WARNING: stale root artifact(s) found ($ROOT/vo-words.json and/or"
-  echo "         $ROOT/vo.mp3). The live copies this build reads/writes live"
-  echo "         in .build/ -- these root files are not used by the build and"
-  echo "         are only kept because vo.mp3 is a documented deliverable."
+# Stale-artifact guard: a project root can accumulate an OLD vo-words.json
+# from a previous skill version or a hand-run script. Nothing in the build
+# reads $ROOT/vo-words.json (everything runs inside .build/, which
+# regenerates its own copy every build) -- but a human (or a hand-run
+# diagnostic script) reading the root file gets silently wrong data. Warn,
+# never delete.
+if [ -f "$ROOT/vo-words.json" ]; then
+  echo "WARNING: stale root artifact found ($ROOT/vo-words.json). The live"
+  echo "         copy this build reads/writes lives in .build/ -- this root"
+  echo "         file is not used by the build, but hand-run diagnostics"
+  echo "         that read it from the project root will get stale data."
+fi
+# vo.mp3 at the project root is a documented user deliverable (SKILL.md,
+# "standalone voice track if they want to re-edit in another tool"), and the
+# build never writes one to the root (only videos/ and captions.srt get
+# copied out) -- so a root vo.mp3 is never stale. It used to share the
+# WARNING above, which meant anyone who kept it got a permanent false-positive
+# "stale" warning on every build (finding 4). Note its presence without
+# calling it stale, so it stays visibly distinct from the real diagnostic
+# hazard (vo-words.json) above.
+if [ -f "$ROOT/vo.mp3" ]; then
+  echo "  note: $ROOT/vo.mp3 found -- this is the documented voice-track"
+  echo "        deliverable (SKILL.md), not read by the build, and not stale."
 fi
 
 # ─── Flags ──────────────────────────────────────────────────────────────
