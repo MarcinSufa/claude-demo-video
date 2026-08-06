@@ -116,17 +116,17 @@ voice:
   voice_id: "en-US-AndrewNeural"
   rate: "+0%"                    # -10% slower, +10% faster
   leading_silence: 0.2           # seconds of silence before first word
-  wpm: 190                       # optional: your voice's real PURE speaking rate
+  wpm: 190                       # example rate: see make-vo.py output for your real measurement
 ```
 
 **`voice.wpm`** calibrates `--plan`'s narration-length estimate to how THIS
-voice actually speaks -- the default (115) is generic and tends to
-over-predict. It's optional and normally you shouldn't need to set it by
-hand: after the first full build, `make-vo.py` measures the real rate from
-the completed TTS output and prints both the number and this exact line to
-paste (also cached per-project in `.build/vo-calibration.json`, keyed on the
-`voice_id`+`rate` pair, so later `--plan` runs pick it up automatically).
-Set it explicitly only to override that measurement or cache.
+voice actually speaks. The value shown above (190) is an illustration only.
+To measure the real rate: after your first full build, `make-vo.py` prints
+the actual rate your voice achieves at the given rate setting, plus the exact
+line to paste here. The measurement is cached per-project in 
+`.build/vo-calibration.json` (keyed on `voice_id`+`rate` pair) so later 
+`--plan` runs pick it up automatically. Set it explicitly only to override
+that measurement or cache.
 
 This is your voice's PURE articulation rate (word count over spoken-word
 time only, excluding pauses and edge-tts's per-segment silence padding) --
