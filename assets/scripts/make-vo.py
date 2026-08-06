@@ -11,6 +11,8 @@ import os
 import subprocess
 import edge_tts
 
+import timing_util
+
 # ── Config-driven: read voice + voiceover from .build/config.json ──────
 CONFIG_PATH = os.environ.get("DEMO_CONFIG", ".build/config.json")
 if not os.path.exists(CONFIG_PATH):
@@ -126,6 +128,7 @@ def main():
     print(f"[3/3] Computing absolute word timings (offset by {LEADING_OFFSET_SEC}s for mix delay)")
     cursor = LEADING_OFFSET_SEC
     all_lines = []
+    seg_durs = []  # aligned 1:1 with all_lines (segments with no words are skipped)
     for seg in segments:
         seg_dur = get_duration(seg["path"])
         line_words = []
@@ -142,14 +145,36 @@ def main():
                 "line_end": round(line_words[-1]["start"] + line_words[-1]["duration"], 4),
                 "words": line_words,
             })
+            seg_durs.append(seg_dur)
         cursor += seg_dur + seg["pause_after"]
 
+    words_data = {"leading_offset": LEADING_OFFSET_SEC, "lines": all_lines}
     with open("vo-words.json", "w") as f:
-        json.dump({"leading_offset": LEADING_OFFSET_SEC, "lines": all_lines}, f, indent=2)
+        json.dump(words_data, f, indent=2)
 
     vo_dur = get_duration("vo.mp3")
     word_count = sum(len(line["words"]) for line in all_lines)
     print(f"\nDone -> vo.mp3 ({vo_dur:.1f}s) + vo-words.json ({word_count} words, {len(all_lines)} lines)")
+
+    # Self-calibration (P3-1 follow-up): this run just told us, for real, how
+    # fast this exact (voice_id, rate) actually speaks. Cache it keyed on the
+    # verbatim pair -- no rate-neutral extrapolation (edge-tts doesn't scale
+    # pauses and phonemes alike) -- so the NEXT `--plan` on this project uses a
+    # measured rate instead of the uncalibrated 115 default.
+    internal_pauses = [seg["pause_after"] for seg in segments[:-1]]
+    measured = timing_util.measure_voice_rate(words_data, internal_pauses, seg_durs)
+    cache_path = "vo-calibration.json"
+    try:
+        cache = json.load(open(cache_path, encoding="utf-8")) if os.path.exists(cache_path) else {}
+    except (OSError, ValueError):
+        cache = {}
+    cache[f"{VOICE}|{RATE}"] = measured
+    with open(cache_path, "w") as f:
+        json.dump(cache, f, indent=2)
+    print(f"  calibration: {VOICE} @ {RATE} measured ~{measured['wpm']:.0f} wpm "
+          f"(per-line overhead {measured['per_line_overhead']:.2f}s) -> {cache_path}")
+    for line in timing_util.calibration_paste_lines(measured):
+        print(line)
 
 
 if __name__ == "__main__":

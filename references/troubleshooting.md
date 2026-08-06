@@ -34,10 +34,10 @@ ffprobe -v error -show_entries stream=codec_type,duration -of default=noprint_wr
 ```bash
 python -c "
 import json, subprocess
-data = json.load(open('vo-words.json'))
+data = json.load(open('.build/vo-words.json'))
 durs = []
 for s in ['s1','s2','s3','s4','s5','s6','s7']:
-    d = subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',f'.normalized/{s}.mp4']).decode().strip()
+    d = subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',f'.build/.normalized/{s}.mp4']).decode().strip()
     durs.append(float(d))
 XF = 0.6
 starts = [0.0]

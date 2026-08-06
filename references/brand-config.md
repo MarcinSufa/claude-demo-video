@@ -116,7 +116,25 @@ voice:
   voice_id: "en-US-AndrewNeural"
   rate: "+0%"                    # -10% slower, +10% faster
   leading_silence: 0.2           # seconds of silence before first word
+  wpm: 190                       # example rate: see make-vo.py output for your real measurement
 ```
+
+**`voice.wpm`** calibrates `--plan`'s narration-length estimate to how THIS
+voice actually speaks. The value shown above (190) is an illustration only.
+To measure the real rate: after your first full build, `make-vo.py` prints
+the actual rate your voice achieves at the given rate setting, plus the exact
+line to paste here. The measurement is cached per-project in 
+`.build/vo-calibration.json` (keyed on `voice_id`+`rate` pair) so later 
+`--plan` runs pick it up automatically. Set it explicitly only to override
+that measurement or cache.
+
+This is your voice's PURE articulation rate (word count over spoken-word
+time only, excluding pauses and edge-tts's per-segment silence padding) --
+it reads noticeably higher than a rate that folds padding in. `--plan` adds
+the leading offset, internal pauses, and per-line padding back separately
+(also from the cache), so the final estimate still lands on the real
+speech-end; don't compare this number against an estimate that includes
+those terms already baked in.
 
 **Top voice picks**:
 | voice_id | Tone | Best for |
