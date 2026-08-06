@@ -86,6 +86,18 @@ def _check_scene_alignment(words):
     scene durations come from probing .normalized/s{i}.mp4 -- the same files
     assemble.sh itself probes to build its xfade chain -- not from config,
     which can be absent (`duration:` is optional) or stale after autofit.
+
+    These probed durations are ALREADY divided by `subs.speedup`
+    (assemble.sh's normalize() applies setpts=PTS/SPEEDUP before this check
+    ever runs), so scene_spans() is called with speedup=1.0 -- no further
+    scaling of the durations themselves. But a composite before_after scene's
+    `cut_at`/`half_duration` in scene-plan.json is still authored in
+    PRE-speedup seconds, so it needs the REAL project speedup to land in the
+    same (post-speedup) units as the probed durations -- passed separately as
+    composite_speedup. Mixing the two without this conversion was a FATAL bug
+    (see .conduct/grok-review.md finding 1): at the default speedup 1.2 it
+    misplaced the internal cut by ~2.3s, and past speedup 2.0 it dropped the
+    sub-boundary entirely.
     """
     try:
         plan_path = os.environ.get("DEMO_PLAN", "scene-plan.json")
@@ -94,7 +106,9 @@ def _check_scene_alignment(words):
             return
         plan = json.load(open(plan_path, encoding="utf-8"))["scenes"]
         cfg = json.load(open(config_path, encoding="utf-8"))
-        crossfade = float(cfg.get("subs", {}).get("crossfade", 0.6))
+        subs = cfg.get("subs", {})
+        crossfade = float(subs.get("crossfade", 0.6))
+        speedup = float(subs.get("speedup", 1.20))
 
         durs = []
         for i in range(1, len(plan) + 1):
@@ -103,7 +117,8 @@ def _check_scene_alignment(words):
                 return  # not every scene normalized yet (e.g. --only) -- skip quietly
             durs.append(_probe_duration(clip))
 
-        spans = timing_util.scene_spans(durs, speedup=1.0, crossfade=crossfade, scene_plan=plan)
+        spans = timing_util.scene_spans(durs, speedup=1.0, crossfade=crossfade,
+                                         scene_plan=plan, composite_speedup=speedup)
         ownership = timing_util.scene_ownership(spans, crossfade)
         for window in ownership:
             if window.get("warning"):

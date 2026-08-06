@@ -156,30 +156,66 @@ def measure_voice_rate(words_data, pause_afters):
     }
 
 
-def _composite_local_cut(entry, raw_dur):
-    """Local (pre-speedup) offset, within a composite scene's own raw on-screen
-    footage, where a before_after (layout: sequential) scene visually flips
-    BEFORE->AFTER. None when the scene isn't a recognised composite -- in that
-    case scene_spans() emits no sub-boundary for it.
+def _composite_local_cut(entry, raw_dur, speedup, composite_speedup):
+    """Local offset -- in `raw_dur`'s OWN units -- within a composite scene's
+    own on-screen footage, where a before_after (layout: sequential) scene
+    visually flips BEFORE->AFTER. None when the scene isn't a recognised
+    composite -- in that case scene_spans() emits no sub-boundary for it.
+
+    An explicit `cut_at`/`half_duration` is ALWAYS authored in pre-speedup
+    source-footage seconds (plan-scenes.py copies the brand.yaml value
+    through untouched) regardless of what `raw_dur` itself represents. To
+    land in raw_dur's own units it is scaled by `speedup / composite_speedup`:
+    when raw_dur is itself pre-speedup (the common case, composite_speedup
+    == speedup) this is a no-op. When raw_dur is a POST-speedup measurement
+    (e.g. probed from an already-normalized clip, so the caller passes
+    speedup=1.0 for the duration math) composite_speedup carries the REAL
+    project speedup so the authored value still converts correctly -- see
+    scene_spans().
+
+    The no-explicit-split fallback (raw_dur / 2.0) needs no such conversion:
+    it is derived FROM raw_dur, so it is already in raw_dur's own units.
     """
     if not entry or entry.get("type") != "before_after":
         return None
     if entry.get("layout", "sequential") != "sequential":
         return None  # side_by_side shows both halves at once -- no temporal cut
-    if entry.get("cut_at") is not None:
-        return float(entry["cut_at"])
-    if entry.get("half_duration") is not None:
-        return float(entry["half_duration"])
+    explicit = entry.get("cut_at")
+    if explicit is None:
+        explicit = entry.get("half_duration")  # plan-scenes.py only ever emits this one
+    if explicit is not None:
+        return float(explicit) * speedup / composite_speedup
     return raw_dur / 2.0  # no explicit split authored -- assume an even cut
 
 
-def scene_spans(raw_durations, speedup=1.0, crossfade=0.6, scene_plan=None):
+def scene_spans(raw_durations, speedup=1.0, crossfade=0.6, scene_plan=None,
+                 composite_speedup=None):
     """Per-scene (start, end, meta) spans in the assembled, crossfaded timeline.
 
     Mirrors assemble.sh's chained xfade: each scene plays raw/speedup seconds,
     consecutive scenes overlap by `crossfade`. The final span's end always
     equals predict_video_seconds(raw_durations, speedup, crossfade) -- same
     invariant, restated as a per-scene breakdown instead of just the total.
+
+    `raw_durations` / `speedup`: `raw_durations` can be either PRE-speedup
+    source-footage seconds (the normal case -- matches predict_video_seconds
+    and every caller except the one below) or, if the caller only has
+    POST-speedup measured lengths (e.g. probed from .normalized/s{i}.mp4,
+    which assemble.sh already divided by speedup before this function ever
+    sees them), pass speedup=1.0 so raw/speedup performs no further scaling.
+
+    `composite_speedup` (optional, defaults to `speedup`): a composite
+    scene's `cut_at`/`half_duration` (see _composite_local_cut) is ALWAYS
+    authored in pre-speedup source-footage seconds, independent of what
+    `raw_durations` represents above. When raw_durations is itself
+    pre-speedup, composite_speedup == speedup and no separate value is
+    needed (the default covers this, and every existing caller). When
+    raw_durations is a POST-speedup measurement (speedup=1.0 above), pass
+    the REAL project speedup here so the authored cut still converts into
+    the same (post-speedup) units as raw_durations -- this is the fix for
+    the composite-cut unit mismatch: mixing a pre-speedup half_duration into
+    post-speedup durations with no conversion silently misplaces (or, past
+    a factor-2 speedup, entirely drops) the internal sub-boundary.
 
     scene_plan (optional): the resolved scene-plan.json `scenes` list, same
     order as raw_durations. A `before_after` entry with `layout: sequential`
@@ -198,6 +234,7 @@ def scene_spans(raw_durations, speedup=1.0, crossfade=0.6, scene_plan=None):
     n = len(raws)
     if n == 0:
         return []
+    cs = speedup if composite_speedup is None else composite_speedup
     spans = []
     prev_end = None
     for i, raw in enumerate(raws):
@@ -206,7 +243,7 @@ def scene_spans(raw_durations, speedup=1.0, crossfade=0.6, scene_plan=None):
         end = start + dur
         prev_end = end
         entry = scene_plan[i] if scene_plan and i < len(scene_plan) else None
-        local_cut = _composite_local_cut(entry, raw)
+        local_cut = _composite_local_cut(entry, raw, speedup, cs)
         if local_cut is not None and 0.0 < local_cut < raw:
             # boundary is relative to this scene's crossfade-shifted `start`,
             # not a naive unshifted cumulative sum -- every scene after the

@@ -128,8 +128,10 @@ class SceneSpans(unittest.TestCase):
     def test_composite_before_after_emits_an_internal_sub_boundary(self):
         # This is the whole point of the feature: a naive scene-plan-boundary
         # check sees only 7.4 and 34.8 and misses the cut INSIDE c2.
+        # half_duration, not cut_at, is what plan-scenes.py actually emits
+        # (plan-scenes.py:214) -- cut_at only ever existed in tests.
         scenes = [{"type": "html_mockup"},
-                  {"type": "before_after", "layout": "sequential", "cut_at": 14.0},
+                  {"type": "before_after", "layout": "sequential", "half_duration": 14.0},
                   {"type": "endcards"}]
         spans = timing_util.scene_spans([8.0, 28.0, 12.0], 1.0, 0.6, scenes)
         # c2 (7.4->35.4) must have split into two sub-spans around the cut.
@@ -143,12 +145,42 @@ class SceneSpans(unittest.TestCase):
         # rendered mp4 (BEFORE banner at 21.3s, AFTER banner at 21.5s).
         # 8.0 + 14.0 = 22.0 is the bug this test guards against regressing to.
         scenes = [{"type": "html_mockup"},
-                  {"type": "before_after", "layout": "sequential", "cut_at": 14.0},
+                  {"type": "before_after", "layout": "sequential", "half_duration": 14.0},
                   {"type": "endcards"}]
         spans = timing_util.scene_spans([8.0, 28.0, 12.0], 1.0, 0.6, scenes)
         # spans: c1, c2-before (7.4->cut), c2-after (cut->35.4), c3.
         self.assertAlmostEqual(spans[1][1], 21.4, places=6)
         self.assertAlmostEqual(spans[2][0], 21.4, places=6)
+
+    def test_composite_cut_matches_check_timing_call_shape_with_real_speedup(self):
+        # Mirrors PRODUCTION check-timing.py exactly: raw_durations there are
+        # probed from .normalized/s{i}.mp4, which assemble.sh already divided
+        # by speedup (setpts=PTS/SPEEDUP) -- so the call passes speedup=1.0 for
+        # the duration scaling. But half_duration in scene-plan.json is always
+        # authored in PRE-speedup source-footage seconds (plan-scenes.py just
+        # copies the authored brand.yaml value through). Mixing those units
+        # without a conversion is FATAL finding 1: at the default project
+        # speedup 1.20 with half_duration 14, the cut lands 2.33s late (start
+        # + 14.0 instead of start + 14/1.2 = start + 11.67).
+        real_speedup = 1.2
+        raw = [8.0, 28.0, 12.0]
+        probed = [r / real_speedup for r in raw]  # what ffprobe measures post-normalize
+        scenes = [{"type": "html_mockup"},
+                  {"type": "before_after", "layout": "sequential", "half_duration": 14.0},
+                  {"type": "endcards"}]
+        spans = timing_util.scene_spans(probed, speedup=1.0, crossfade=0.6,
+                                         scene_plan=scenes, composite_speedup=real_speedup)
+        start_1 = raw[0] / real_speedup - 0.6
+        expected_cut = start_1 + 14.0 / real_speedup  # start + 11.667, not start + 14.0
+        edges = [e for s in spans for e in (float(s[0]), float(s[1]))]
+        self.assertTrue(
+            any(abs(e - expected_cut) < 1e-6 for e in edges),
+            f"expected a boundary at {expected_cut:.3f}s; got edges "
+            f"{sorted(set(round(e, 3) for e in edges))}")
+        # The old (broken) contract would have placed it at start_1 + 14.0 --
+        # prove that number is NOT present as a hard-cut boundary.
+        wrong_cut = start_1 + 14.0
+        self.assertFalse(any(abs(e - wrong_cut) < 1e-6 for e in edges))
 
 
 class SceneOwnership(unittest.TestCase):
@@ -173,7 +205,7 @@ class CheckSceneAlignment(unittest.TestCase):
         # start (8.0 + 14.0 = 22.0) ignores the preceding crossfade overlap
         # and is the bug this test used to encode. 23.6 - 21.4 = 2.2s overrun.
         scenes = [{"type": "html_mockup"},
-                  {"type": "before_after", "layout": "sequential", "cut_at": 14.0},
+                  {"type": "before_after", "layout": "sequential", "half_duration": 14.0},
                   {"type": "endcards"}]
         spans = timing_util.scene_spans([8.0, 28.0, 12.0], 1.0, 0.6, scenes)
         ownership = timing_util.scene_ownership(spans, 0.6)
@@ -186,7 +218,7 @@ class CheckSceneAlignment(unittest.TestCase):
     def test_tuned_line_within_tolerance_is_not_flagged(self):
         # Straddles the true 21.4 cut by ~0.1s each side, within tolerance.
         scenes = [{"type": "html_mockup"},
-                  {"type": "before_after", "layout": "sequential", "cut_at": 14.0},
+                  {"type": "before_after", "layout": "sequential", "half_duration": 14.0},
                   {"type": "endcards"}]
         spans = timing_util.scene_spans([8.0, 28.0, 12.0], 1.0, 0.6, scenes)
         ownership = timing_util.scene_ownership(spans, 0.6)
