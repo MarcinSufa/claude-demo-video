@@ -102,27 +102,33 @@ def estimate_vo_seconds(voiceover, wpm=115, leading_offset=0.0, per_line_overhea
             + leading_offset + per_line_overhead * len(items))
 
 
-def measure_voice_rate(words_data, pause_afters):
+def measure_voice_rate(words_data, pause_afters, seg_durs=None):
     """Derive the effective words-per-minute (and, data permitting, a per-line
     overhead term) a real completed TTS run actually spoke at.
 
-    Pure: takes already-loaded vo-words.json data (see speech_end_seconds) plus
-    the authored internal pause_after seconds (same convention as
-    estimate_vo_seconds -- one per line, excluding the trailing pause). All
-    file reading belongs in the caller (make-vo.py writes .build/vo-calibration.json
-    from this).
+    Pure: takes already-loaded vo-words.json data (see speech_end_seconds), the
+    authored internal pause_after seconds (same convention as
+    estimate_vo_seconds -- one per line, excluding the trailing pause), and
+    optionally each line's real mp3 SEGMENT duration (make-vo.py already
+    computes this per segment via ffprobe -- `seg_dur` -- before this is
+    called). All file reading/ffprobe belongs in the caller.
 
     wpm is fit from the AGGREGATE totals: speaking_seconds = speech_end -
     leading_offset - sum(pause_afters); wpm = total_words / speaking_seconds * 60.
     leading_offset defaults to the first line's line_start when vo-words.json's
     own "leading_offset" key is absent.
 
-    per_line_overhead is a constant-per-line residual (edge-tts segment padding
-    that scales with line count, not word count -- see fusion-timing.md D4):
-    each line's OWN (line_end - line_start) excludes inter-line pauses, so
-    duration_i = words_i/wpm*60 + overhead is measurable per line once wpm is
-    known. Needs >=2 lines to be meaningful (a single line has nothing to
-    separate the per-line constant from); with fewer it is reported as 0.0.
+    per_line_overhead is edge-tts's per-segment padding (silence baked into
+    each segment mp3 before/after the spoken words, scaling with line count
+    rather than word count -- see fusion-timing.md D4), measured as
+    seg_dur_i - (line_end_i - line_start_i): the real segment length minus
+    that line's own word span. This is an INDEPENDENT measurement (seg_dur
+    comes from ffprobe on the actual mp3, not from the wpm fit above) -- unlike
+    the previous approach, which fit wpm so total speaking time equalled the
+    sum of line durations and then computed residuals against that same fit;
+    those residuals summed to zero by construction, so they measured nothing
+    (grok-review.md finding 3). Without `seg_durs`, nothing is measured and
+    per_line_overhead is reported as 0.0 (never a fabricated identity).
 
     Returns a dict: wpm, per_line_overhead, total_words, leading_offset,
     internal_pauses, speech_end, line_count.
@@ -137,12 +143,11 @@ def measure_voice_rate(words_data, pause_afters):
     wpm = (total_words / speaking_seconds * 60) if speaking_seconds > 0 else 0.0
 
     per_line_overhead = 0.0
-    if wpm > 0 and len(lines) >= 2:
+    if seg_durs and len(seg_durs) == len(lines) and lines:
         residuals = []
-        for ln in lines:
-            words = len(ln.get("words") or [])
-            dur = float(ln["line_end"]) - float(ln["line_start"])
-            residuals.append(dur - words / wpm * 60)
+        for ln, seg_dur in zip(lines, seg_durs):
+            word_span = float(ln["line_end"]) - float(ln["line_start"])
+            residuals.append(float(seg_dur) - word_span)
         per_line_overhead = sum(residuals) / len(residuals)
 
     return {

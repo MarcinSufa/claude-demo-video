@@ -245,10 +245,43 @@ class MeasureVoiceRate(unittest.TestCase):
         result = timing_util.measure_voice_rate({"lines": []}, [])
         self.assertEqual(result["wpm"], 0.0)
 
-    def test_per_line_overhead_needs_at_least_two_lines(self):
+    def test_per_line_overhead_is_zero_without_seg_durs(self):
+        # No independent measurement supplied -> report "not measured" (0.0),
+        # never a tautological identity (see below).
         words = {"lines": [{"line_start": 1.2, "line_end": 43.9, "words": ["x"] * 100}]}
         result = timing_util.measure_voice_rate(words, [7.8])
         self.assertEqual(result["per_line_overhead"], 0.0)
+
+    def test_per_line_overhead_is_not_a_tautology(self):
+        # FATAL/MAJOR finding 3 (grok-review.md #3): the OLD implementation fit
+        # wpm so total speaking time == sum(line durations), then computed
+        # per-line residuals against that SAME fit -- residuals sum to zero by
+        # construction, so mean residual was always ~0 regardless of the real
+        # data. Prove the fix answers the real question instead: two lines
+        # with equal word counts but very different real mp3 segment lengths
+        # (make-vo.py's seg_dur, independent of the word-timing fit) must
+        # produce a large, non-zero measured overhead -- not an identity.
+        words = {"lines": [
+            {"line_start": 0.0, "line_end": 2.0, "words": ["x"] * 10},
+            {"line_start": 2.5, "line_end": 4.5, "words": ["x"] * 10},
+        ]}
+        # Real segment mp3s are each 1.0s longer than their word span (edge-tts
+        # padding) -- an INDEPENDENT measurement, not derived from the wpm fit.
+        seg_durs = [3.0, 3.0]
+        result = timing_util.measure_voice_rate(words, [0.5], seg_durs=seg_durs)
+        self.assertAlmostEqual(result["per_line_overhead"], 1.0, places=3)
+
+    def test_per_line_overhead_measures_real_segment_padding_per_line(self):
+        # Different padding per line -> different (non-averaged-to-zero) result;
+        # this is the actual thing D4 asked to measure (fusion-timing.md D4:
+        # edge-tts segment padding that scales with line count, not word count).
+        words = {"lines": [
+            {"line_start": 0.0, "line_end": 2.0, "words": ["x"] * 10},
+            {"line_start": 2.5, "line_end": 4.5, "words": ["x"] * 10},
+        ]}
+        seg_durs = [2.2, 2.8]  # paddings: 0.2s and 0.8s -> mean 0.5s
+        result = timing_util.measure_voice_rate(words, [0.5], seg_durs=seg_durs)
+        self.assertAlmostEqual(result["per_line_overhead"], 0.5, places=3)
 
 
 if __name__ == "__main__":

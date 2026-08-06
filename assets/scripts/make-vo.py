@@ -128,6 +128,7 @@ def main():
     print(f"[3/3] Computing absolute word timings (offset by {LEADING_OFFSET_SEC}s for mix delay)")
     cursor = LEADING_OFFSET_SEC
     all_lines = []
+    seg_durs = []  # aligned 1:1 with all_lines (segments with no words are skipped)
     for seg in segments:
         seg_dur = get_duration(seg["path"])
         line_words = []
@@ -144,6 +145,7 @@ def main():
                 "line_end": round(line_words[-1]["start"] + line_words[-1]["duration"], 4),
                 "words": line_words,
             })
+            seg_durs.append(seg_dur)
         cursor += seg_dur + seg["pause_after"]
 
     words_data = {"leading_offset": LEADING_OFFSET_SEC, "lines": all_lines}
@@ -160,7 +162,7 @@ def main():
     # pauses and phonemes alike) -- so the NEXT `--plan` on this project uses a
     # measured rate instead of the uncalibrated 115 default.
     internal_pauses = [seg["pause_after"] for seg in segments[:-1]]
-    measured = timing_util.measure_voice_rate(words_data, internal_pauses)
+    measured = timing_util.measure_voice_rate(words_data, internal_pauses, seg_durs)
     cache_path = "vo-calibration.json"
     try:
         cache = json.load(open(cache_path, encoding="utf-8")) if os.path.exists(cache_path) else {}
