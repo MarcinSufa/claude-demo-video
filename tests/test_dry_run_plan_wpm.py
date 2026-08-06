@@ -73,6 +73,49 @@ class TestResolveWpm(unittest.TestCase):
         self.assertEqual(wpm, 115.0)
         self.assertIn("uncalibrated", source.lower())
 
+    def test_explicit_wpm_still_applies_cached_leading_offset(self):
+        # MAJOR finding 4 (grok-review.md #4): pinning the measured wpm into
+        # brand.yaml (our own recommended workflow) must not make the
+        # estimate WORSE than leaving the cache alone. The explicit path used
+        # to force leading_offset/per_line_overhead to 0.0 even when a cache
+        # entry for the exact same voice/rate had real measured values.
+        self._write_cache({"en-US-AndrewNeural|+0%": {
+            "wpm": 150.0, "leading_offset": 1.2, "per_line_overhead": 0.35}})
+        wpm, lead, overhead, source = drp.resolve_wpm({"voice": {"wpm": 172}})
+        self.assertEqual(wpm, 172.0)  # explicit wpm still wins
+        self.assertAlmostEqual(lead, 1.2)
+        self.assertAlmostEqual(overhead, 0.35)
+        self.assertIn("voice.wpm", source)
+
+    def test_explicit_wpm_with_no_cache_entry_has_zero_offset(self):
+        # No cache entry for this voice/rate at all -> nothing to carry over;
+        # explicit wpm alone, offsets stay 0.0 (unchanged prior behavior).
+        wpm, lead, overhead, source = drp.resolve_wpm({"voice": {"wpm": 172}})
+        self.assertEqual(wpm, 172.0)
+        self.assertEqual((lead, overhead), (0.0, 0.0))
+
+    def test_cache_wpm_null_falls_back_uncalibrated(self):
+        # MINOR finding 6 (grok-review.md #6): a cached {"wpm": null} must not
+        # crash --plan on float(None).
+        self._write_cache({"en-US-AndrewNeural|+0%": {"wpm": None}})
+        wpm, _, _, source = drp.resolve_wpm({"voice": {}})
+        self.assertEqual(wpm, 115.0)
+        self.assertIn("uncalibrated", source.lower())
+
+    def test_cache_wpm_zero_falls_back_uncalibrated(self):
+        # MINOR finding 6: a cached wpm of 0 must not reach estimate_vo_seconds
+        # (ZeroDivisionError there) -- validate and fall back here instead.
+        self._write_cache({"en-US-AndrewNeural|+0%": {"wpm": 0}})
+        wpm, _, _, source = drp.resolve_wpm({"voice": {}})
+        self.assertEqual(wpm, 115.0)
+        self.assertIn("uncalibrated", source.lower())
+
+    def test_cache_wpm_negative_falls_back_uncalibrated(self):
+        self._write_cache({"en-US-AndrewNeural|+0%": {"wpm": -5}})
+        wpm, _, _, source = drp.resolve_wpm({"voice": {}})
+        self.assertEqual(wpm, 115.0)
+        self.assertIn("uncalibrated", source.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

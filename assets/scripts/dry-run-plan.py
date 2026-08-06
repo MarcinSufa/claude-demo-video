@@ -20,6 +20,26 @@ PLAN = os.environ.get("DEMO_PLAN", "scene-plan.json")
 CALIBRATION_CACHE = "vo-calibration.json"
 
 
+def _safe_float(value, default=0.0):
+    """float() that tolerates missing/None/non-numeric cache values instead of
+    raising -- a hand-edited or partially-written vo-calibration.json must
+    degrade gracefully, never crash --plan (finding 6)."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _cached_wpm(entry):
+    """Validate a calibration-cache wpm value. None if missing, non-numeric,
+    or <= 0 -- a null or zero wpm must never reach estimate_vo_seconds, where
+    it would crash (float(None)) or divide by zero (finding 6)."""
+    if not entry:
+        return None
+    wpm = _safe_float(entry.get("wpm"), default=None)
+    return wpm if wpm and wpm > 0 else None
+
+
 def resolve_wpm(cfg):
     """Which wpm --plan should use, and where it came from.
 
@@ -28,26 +48,46 @@ def resolve_wpm(cfg):
     uncalibrated 115 default. --plan prints the source so a stale/absent
     cache is never mistaken for a calibrated estimate.
 
+    The leading_offset / per_line_overhead calibration terms come from the
+    cache entry for this exact (voice_id, rate) whenever one exists -- even
+    on the explicit-wpm path. Pinning voice.wpm (our own recommended
+    workflow, printed by make-vo.py) only overrides the RATE; it says nothing
+    about leading silence or per-segment padding, and forcing those to 0.0
+    made following our advice strictly worse than leaving the cache alone
+    (finding 4).
+
     Returns (wpm, leading_offset, per_line_overhead, source_label).
     """
     voice_cfg = cfg.get("voice", {})
-    explicit = voice_cfg.get("wpm")
-    if explicit is not None:
-        return float(explicit), 0.0, 0.0, "explicit voice.wpm"
-
     voice_id = voice_cfg.get("voice_id", "en-US-AndrewNeural")
     rate = voice_cfg.get("rate", "+0%")
+
+    entry = None
     if os.path.exists(CALIBRATION_CACHE):
         try:
             cache = json.load(open(CALIBRATION_CACHE, encoding="utf-8"))
         except (OSError, ValueError):
             cache = {}
         entry = cache.get(f"{voice_id}|{rate}")
+
+    cached_leading = _safe_float(entry.get("leading_offset")) if entry else 0.0
+    cached_overhead = _safe_float(entry.get("per_line_overhead")) if entry else 0.0
+
+    explicit = voice_cfg.get("wpm")
+    if explicit is not None:
+        source = "explicit voice.wpm"
         if entry:
-            return (float(entry.get("wpm", 115)),
-                    float(entry.get("leading_offset", 0.0)),
-                    float(entry.get("per_line_overhead", 0.0)),
-                    "calibration cache")
+            source += " (+ cached leading offset/overhead for this voice/rate)"
+        return float(explicit), cached_leading, cached_overhead, source
+
+    cached_wpm = _cached_wpm(entry)
+    if cached_wpm is not None:
+        return cached_wpm, cached_leading, cached_overhead, "calibration cache"
+
+    if entry is not None:
+        # entry exists for this voice/rate but its wpm is missing/invalid --
+        # don't crash or silently divide by zero downstream, label it clearly.
+        return 115.0, 0.0, 0.0, "uncalibrated default (115 wpm) -- cached wpm invalid"
 
     return 115.0, 0.0, 0.0, "uncalibrated default (115 wpm)"
 
