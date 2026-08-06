@@ -70,6 +70,11 @@ voice:
   voice_id: "en-US-AndrewNeural"   # try ChristopherNeural (authority), EricNeural (rational)
   rate: "+0%"                      # -10% slower, +10% faster
   leading_silence: 0.2             # seconds before first word
+  # wpm: 165                       # optional: pin this voice's measured PURE
+  #                                 # articulation rate (excludes padding/pauses --
+  #                                 # see brand-config.md). make-vo.py prints the
+  #                                 # real number to paste after your first build;
+  #                                 # leave commented out to let --plan measure it.
 
   # Fix mispronounced brand/product names. The voice reads the RESPELLING;
   # captions still show the ORIGINAL. Essential when a non-English voice mangles

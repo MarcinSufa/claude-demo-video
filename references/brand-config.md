@@ -116,7 +116,7 @@ voice:
   voice_id: "en-US-AndrewNeural"
   rate: "+0%"                    # -10% slower, +10% faster
   leading_silence: 0.2           # seconds of silence before first word
-  wpm: 172                       # optional: your voice's real speaking rate
+  wpm: 190                       # optional: your voice's real PURE speaking rate
 ```
 
 **`voice.wpm`** calibrates `--plan`'s narration-length estimate to how THIS
@@ -127,6 +127,14 @@ the completed TTS output and prints both the number and this exact line to
 paste (also cached per-project in `.build/vo-calibration.json`, keyed on the
 `voice_id`+`rate` pair, so later `--plan` runs pick it up automatically).
 Set it explicitly only to override that measurement or cache.
+
+This is your voice's PURE articulation rate (word count over spoken-word
+time only, excluding pauses and edge-tts's per-segment silence padding) --
+it reads noticeably higher than a rate that folds padding in. `--plan` adds
+the leading offset, internal pauses, and per-line padding back separately
+(also from the cache), so the final estimate still lands on the real
+speech-end; don't compare this number against an estimate that includes
+those terms already baked in.
 
 **Top voice picks**:
 | voice_id | Tone | Best for |
