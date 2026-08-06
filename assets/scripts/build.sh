@@ -34,6 +34,19 @@ step() {                       # step <percent> <label...>
 
 [ -f brand.yaml ] || { echo "Missing brand.yaml — run /demo-video init or copy assets/brand.example.yaml"; exit 1; }
 
+# Stale-artifact guard: a project root can accumulate an OLD vo-words.json /
+# vo.mp3 from a previous skill version or a hand-run script. Nothing in the
+# build reads $ROOT/vo-words.json or $ROOT/vo.mp3 (everything runs inside
+# .build/, which regenerates its own copies every build) -- but a human
+# reading the root file by hand gets silently wrong data. Warn, never delete:
+# vo.mp3 at the project root is a documented user deliverable (SKILL.md).
+if [ -f "$ROOT/vo-words.json" ] || [ -f "$ROOT/vo.mp3" ]; then
+  echo "WARNING: stale root artifact(s) found ($ROOT/vo-words.json and/or"
+  echo "         $ROOT/vo.mp3). The live copies this build reads/writes live"
+  echo "         in .build/ -- these root files are not used by the build and"
+  echo "         are only kept because vo.mp3 is a documented deliverable."
+fi
+
 # ─── Flags ──────────────────────────────────────────────────────────────
 PLAN_ONLY=0; NO_CACHE=0; ONLY=""
 while [ $# -gt 0 ]; do
