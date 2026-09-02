@@ -1,0 +1,73 @@
+# Library music for music.mode: library, one primary and one alternate track per mood.
+# Every track is CC0 1.0 (public domain dedication) as stated on its source_page,
+# hosted on archive.org, instrumental, 30 s to 4 min. fetch-music.py verifies sha256
+# on download and on every cache hit; make-music.sh loops or trims the track to the
+# video length. Copy this folder next to scripts/ when vendoring the skill.
+calm:
+  primary:
+    url: "https://archive.org/download/JuhaniJunkala-JRPGpack4calm/Calm3%20-%20Peaceful%20Days.mp3"
+    sha256: "4cfc22abab56c4e69600ad8dae8626491bece55e785b53ba0c5bda61d055c0f2"
+    licence: CC0
+    source_page: "https://archive.org/details/JuhaniJunkala-JRPGpack4calm"
+    title: "Calm3 - Peaceful Days"
+    artist: "Juhani Junkala"
+    duration_s: 64
+  alternate:
+    url: "https://archive.org/download/Ondrosik-Free-music-catalog/Peaceful.mp3"
+    sha256: "6d488500b594634b60a311d4344f7cecfaa2e2ce44d8b40825b0404ebd7d1dd2"
+    licence: CC0
+    source_page: "https://archive.org/details/Ondrosik-Free-music-catalog"
+    title: "Peaceful"
+    artist: "Ondrosik"
+    duration_s: 122
+uplift:
+  primary:
+    url: "https://archive.org/download/Ondrosik-Free-music-catalog/Sunlit%20Groove.mp3"
+    sha256: "4d25f89e373b6adb887ff0259511cb40111514c0f99e28124f472ad421d4f84a"
+    licence: CC0
+    source_page: "https://archive.org/details/Ondrosik-Free-music-catalog"
+    title: "Sunlit Groove"
+    artist: "Ondrosik"
+    duration_s: 114
+  alternate:
+    url: "https://archive.org/download/JuhaniJunkala-JRPGpack1-Exploration/Exploration1%20-%20Grasslands.mp3"
+    sha256: "9a490b38621dbf474dff9796870ffb63e77bd21a619b8caa4313d9b53dd2475f"
+    licence: CC0
+    source_page: "https://archive.org/details/JuhaniJunkala-JRPGpack1-Exploration"
+    title: "Exploration1 - Grasslands"
+    artist: "Juhani Junkala"
+    duration_s: 71
+tech:
+  primary:
+    url: "https://archive.org/download/LoyaltyFreakMusic-minimalAmbientBounce/Loyalty_Freak_Music_-_02_-_One_Cool_Minute.mp3"
+    sha256: "8778d1e095ab7c6793d10ce9bbe1d9783c9ec6d558f11302ced2202b2c039a0c"
+    licence: CC0
+    source_page: "https://archive.org/details/LoyaltyFreakMusic-minimalAmbientBounce"
+    title: "One Cool Minute"
+    artist: "Loyalty Freak Music"
+    duration_s: 193
+  alternate:
+    url: "https://archive.org/download/Komiku-the_binge_watchers/Komiku_-_18_-_Ambiant_Obscur_Technology.mp3"
+    sha256: "2456b38c14930dad1f22c6098f4987a60ca44b2457538b8b646e44fe18546183"
+    licence: CC0
+    source_page: "https://archive.org/details/Komiku-the_binge_watchers"
+    title: "Ambiant Obscur Technology"
+    artist: "Komiku"
+    duration_s: 155
+bugfix:
+  primary:
+    url: "https://archive.org/download/Ondrosik-Free-music-catalog/Playful%20Twins.mp3"
+    sha256: "d1551a844b9137aa02182a6e23e19e809e37022b4517816b83eae7f0c1b4d4b3"
+    licence: CC0
+    source_page: "https://archive.org/details/Ondrosik-Free-music-catalog"
+    title: "Playful Twins"
+    artist: "Ondrosik"
+    duration_s: 73
+  alternate:
+    url: "https://archive.org/download/Ondrosik-Free-music-catalog/Quirky%20Little%20March.mp3"
+    sha256: "6624d6596ea2dedaa5c1aa2ff5c731071205170a2beb2bfb1b551580b69bb404"
+    licence: CC0
+    source_page: "https://archive.org/details/Ondrosik-Free-music-catalog"
+    title: "Quirky Little March"
+    artist: "Ondrosik"
+    duration_s: 90

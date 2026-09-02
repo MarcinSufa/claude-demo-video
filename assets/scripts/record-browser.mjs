@@ -50,6 +50,7 @@ import { chromium } from 'playwright';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, basename } from 'node:path';
+import { actionLabel, glowTarget, selectorCountError } from './glow_check.mjs';
 
 const sceneFile = process.argv[2];
 if (!sceneFile || !existsSync(sceneFile)) {
@@ -215,7 +216,26 @@ await page.waitForTimeout(SETTLE);
 const events = [];
 const stamp = () => Math.max(0, (Date.now() - recStart) / 1000 - trimStart);
 
+// Validate every glow/highlight target right before its action runs (a dialog opened
+// by an earlier action does not exist at page load), and stop the recording on a
+// selector that does not match exactly one node.
+async function assertGlowTarget(action) {
+  const selector = glowTarget(action);
+  if (!selector) return;
+  await page.waitForSelector(selector, { state: 'attached', timeout: 5000 }).catch(() => {});
+  const count = await page.evaluate((s) => {
+    try { return document.querySelectorAll(s).length; } catch { return null; }
+  }, selector);
+  const problem = selectorCountError(actionLabel(action), selector, count);
+  if (!problem) return;
+  console.error(problem);
+  await context.close();
+  await browser.close();
+  process.exit(1);
+}
+
 for (const action of scene.actions ?? []) {
+  await assertGlowTarget(action);
   const start = stamp();
   let label = action.label;
   let kind = null;

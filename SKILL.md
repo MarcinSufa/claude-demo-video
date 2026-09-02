@@ -12,7 +12,7 @@ A single `final-framed.mp4` (~50s, 1920×1080) that shows **how an application w
 - **Your scenes, your order** — `scenes.sequence` composes any mix of: `browser_capture` (drive + record the REAL running app), `before_after` (a labeled BEFORE/AFTER comparison of two clips — bug→fix task demos), `html_mockup` (a designed screen for an unbuilt feature), `screen_recording` (an existing clip), `terminal` (CLI via VHS), plus built-in `graph` and `endcards`.
 - **AI voiceover** narrating the feature (Edge TTS, free, no API key, many languages/voices)
 - **Karaoke word-highlight captions** synced via WordBoundary events, readable on light AND dark UI
-- **Music bed** — procedural / your own file / none — auto-ducked under the voice
+- **Music bed**: CC0 library track per mood / procedural / your own file / none, fitted to the video, auto-ducked under the voice
 - **Brand framing** — palette, fonts, logo, end cards; optional styled-window-on-desk composite
 
 Built entirely with **free tools** — ffmpeg, Playwright headless Chromium, VHS (Charm), Edge TTS. Zero paid services.
@@ -52,15 +52,16 @@ apply-brand.py    → compile brand.yaml → .build/ (rendered templates + confi
 render-mascot.py  → mascot sprite frames (if mascot: configured) — overlaid inside build-scenes.sh per row/step
 make-vo.py        → Edge TTS streams vo.mp3 + vo-words.json (word-level timing)
 make-captions.py  → captions.ass (karaoke) + captions.srt
-make-music.sh     → procedural ambient pad music.mp3 (or mode: file / none)
 plan-scenes.py    → resolve the scene sequence → scene-plan.json
 make-auth.mjs     → (if `auth:` set) log in once → auth.json (authed scenes reuse it).
                     mode: scripted (creds) | manual (headed, you log in — SSO/OIDC/2FA)
 build-scenes.sh   → render each scene by type; pin to `duration:` (normalize-clip.py) if set; cached
 autofit.py        → (if `scenes.autofit`) adjust speedup so video holds the voiceover
 assemble.sh       → normalize + speedup + crossfade N scenes → final-rough.mp4
+make-music.sh     → music.mp3 fitted to final-rough.mp4 (library CC0 track via fetch-music.py, procedural, file or none)
 mix-final.sh      → ⚠ timing gate (check-timing.py) → voice + music sidechain-ducked → final-with-audio.mp4
 burn-captions.sh  → ffmpeg subtitles filter → final-with-captions.mp4
+verify-final.py   → ⚠ blocks on duration drift, missing/silent audio, white flash; prints captions per scene
 record-frame.mjs  → Playwright snapshot + ffmpeg overlay → final-framed.mp4
 ```
 
@@ -150,6 +151,7 @@ When invoked, follow this sequence:
    - `mkdir <project>/demo-video/`
    - Copy `assets/scripts/*` and `assets/templates/*` to that folder
    - Copy `assets/mascots/` → `<project>/demo-video/mascots/` (the roster JSON files — needed so the build can find roster characters at `demo-video/mascots/$CHAR.json` when running from a scaffolded project)
+   - Copy `assets/music/` → `<project>/demo-video/music/` (the CC0 track manifest read by `music.mode: library`; without it the build warns and uses procedural music)
    - Copy `assets/brand.example.yaml` → `brand.yaml`
    - Copy `assets/package.example.json` → `package.json` (so `pnpm install` lands
      Playwright in *this* folder, not a parent — without a local manifest pnpm walks
@@ -174,10 +176,11 @@ When invoked, follow this sequence:
      ```bash
      python make-vo.py
      python make-captions.py
-     bash make-music.sh
      bash assemble.sh
+     bash make-music.sh
      bash mix-final.sh
      bash burn-captions.sh
+     python verify-final.py videos/final-with-captions.mp4 --rough videos/final-rough.mp4
      node record-frame.mjs
      ```
    - On each step, report progress to user
@@ -186,8 +189,9 @@ When invoked, follow this sequence:
 3b. **For `plan`** (dry run, ~1s, no render):
    - `bash scripts/build.sh --plan`
    - Reports each scene's pinned `duration` (and on-screen length after speedup), the
-     voiceover length estimated from word count (no TTS), and the predicted video length
-     with a **PASS/WARN** verdict. WARN exits non-zero — narration would be cut.
+     voiceover length (measured from `.build/vo-words.json` when a build of the current
+     script exists, otherwise estimated from word count; the output names which), and the
+     predicted video length with a **PASS/WARN** verdict. WARN exits non-zero: narration would be cut.
    - Needs only ffmpeg + python + pyyaml (no VHS/Playwright/edge-tts), so it runs anywhere.
    - Use it before `build` to tune `voiceover` / scene `duration` / `speedup` cheaply.
 
@@ -241,7 +245,8 @@ How to produce the two clips for a *code* change:
 
 **Focus the capture on what changed.** A `before_after` capture half is a
 `browser_capture` spec, so its `actions` take focus controls: `glow`/`highlight`
-to pulse the touched element, `waitToast` to guarantee an error/success
+to pulse the touched element (the selector must match exactly one DOM node, or the
+recording stops naming the action, selector and count), `waitToast` to guarantee an error/success
 notification is on screen, and per-action `speed` (ramp out a slow load) + `zoom`
 (Ken Burns onto the toast/field). Off-screen targets are auto-scrolled into view
 before interaction. So a bug→fix demo reads clearly — the viewer sees the toast in
@@ -339,7 +344,9 @@ demo-video/
 │   ├── apply-brand.py          ← compiles brand.yaml → .build/
 │   ├── make-vo.py
 │   ├── make-captions.py
-│   ├── make-music.sh
+│   ├── make-music.sh           ← music bed fitted to the video (library / procedural / file / none)
+│   ├── fetch-music.py          ← CC0 track fetch + sha256 cache (music/manifest.yaml)
+│   ├── verify-final.py         ← post-mux gate: duration, audio, white flash, captions per scene
 │   ├── plan-scenes.py          ← resolves scene sequence
 │   ├── build-scenes.sh
 │   ├── assemble.sh
@@ -361,7 +368,8 @@ demo-video/
 │   ├── record-frame.mjs
 │   ├── record-endcards.mjs
 │   ├── record-graph.mjs
-│   ├── record-browser.mjs      ← real-app / html_mockup capture
+│   ├── record-browser.mjs      ← real-app / html_mockup capture (glow/highlight selectors must match one node)
+│   ├── glow_check.mjs          ← selector validation shared with tests
 │   ├── display.sh
 │   └── build.sh                ← orchestrator (build | --plan)
 ├── templates/

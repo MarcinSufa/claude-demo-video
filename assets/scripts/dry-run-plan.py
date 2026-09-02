@@ -119,6 +119,33 @@ def resolve_wpm(cfg):
     return 115.0, cached_leading, cached_overhead, "uncalibrated default (115 wpm)"
 
 
+def measured_vo(cfg, path="vo-words.json"):
+    """(speech_end_seconds, source) from a vo-words.json that matches the
+    current voiceover, else None so the caller falls back to the estimate.
+
+    A file written by make-vo.py carries script_sha; older files are trusted
+    only when their line count matches the voiceover."""
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    voiceover = cfg.get("voiceover", [])
+    lines = data.get("lines") or []
+    sha = data.get("script_sha")
+    if sha:
+        if sha != timing_util.voiceover_sha(voiceover):
+            return None
+        source = f"measured from {path} ({len(lines)} lines)"
+    else:
+        if len(lines) != len(voiceover):
+            return None
+        source = f"measured from {path} ({len(lines)} lines, unverified, no script_sha)"
+    return timing_util.speech_end_seconds(data), source
+
+
 def mascot_note_for(entry):
     """Return a short mascot annotation string for a plan entry, or ''."""
     m = entry.get("mascot_plan", {})
@@ -149,6 +176,11 @@ def main():
     vo_est = timing_util.estimate_vo_seconds(
         cfg.get("voiceover", []), wpm=wpm,
         leading_offset=leading_offset, per_line_overhead=per_line_overhead)
+    measured = measured_vo(cfg)
+    if measured:
+        vo_est, vo_source = measured
+    else:
+        vo_source = "estimated from word count, no TTS"
     n = len(plan)
 
     print(f"\n  Dry run -- {n} scenes, speedup {speedup}x, crossfade {crossfade}s, "
@@ -170,7 +202,7 @@ def main():
             fin_s = f"{float(dur)/speedup:>7.2f}s"
         print(f"  {name:<22} {s['type']:<16} {raw_s:>9} {fin_s:>9}{mascot_note_for(s)}")
 
-    print(f"\n  Voiceover estimate (no TTS): ~{vo_est:.1f}s")
+    print(f"\n  Voiceover length: {vo_est:.1f}s ({vo_source})")
 
     if all_pinned and n >= 1:
         video = timing_util.predict_video_seconds(raws, speedup, crossfade)

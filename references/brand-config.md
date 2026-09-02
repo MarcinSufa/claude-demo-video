@@ -149,6 +149,36 @@ those terms already baked in.
 
 Full list: https://gist.github.com/BettyJJ/17cbaa1de96235a7f5773b8690a20462
 
+### `music`
+```yaml
+music:
+  mode: "library"                # "library" | "procedural" | "file" | "none"
+  style: "calm"                  # "calm" | "uplift" | "tech" | "bugfix"
+  volume: 0.45
+  # file: "assets/track.mp3"     # mode: file only
+```
+
+`library` fetches one CC0 / public-domain track per mood from
+`music/manifest.yaml` (primary, then alternate) into a per-user cache
+(`XDG_CACHE_HOME` or `~/.cache`, `%LOCALAPPDATA%` on Windows, override with
+`DEMO_MUSIC_CACHE`) and verifies its sha256 on every use. A failed fetch prints a
+WARNING and uses the `procedural` preset of the same mood, so an offline build
+still completes. `file` with a missing path fails the build. Whatever the mode,
+the bed is looped or trimmed to the final video length and faded out.
+
+### `verify`
+```yaml
+verify:
+  white_threshold: 120           # absolute brightness (signalstats YAVG) a flash must exceed
+  flash_margin: 60               # and how far above the file's median brightness it must be
+```
+
+`verify-final.py` runs after the mux: duration equals the rough cut within 0.5 s,
+an audio stream exists and is not silent where the narration ends, no frame is
+brighter than both `white_threshold` and the file median plus `flash_margin`
+(so a light-themed app passes while a one-off white frame fails), and the
+captions are printed next to each scene.
+
 ### `backdrop`
 ```yaml
 backdrop:
