@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mixes vo.mp3 + music bed (sidechain ducked under voice) and muxes to video.
-# Honors music.mode: none (voice only) | file | procedural. Reads music.volume.
+# Honors music.mode: none (voice only) | library | file | procedural. Reads music.volume.
 # Output: videos/final-with-audio.mp4
 set -e
 cd "$(dirname "$0")"
