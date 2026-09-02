@@ -3,6 +3,14 @@
 Used by check-timing.py (P0-1 safety-net gate) and dry-run-plan.py (P3-1).
 Pure functions only -- no ffmpeg, no TTS, no I/O -- so they stay unit-testable.
 """
+import hashlib
+
+
+def voiceover_sha(voiceover):
+    """Fingerprint of the narration text alone, stored in vo-words.json so a
+    later --plan can tell a current measurement from a stale one."""
+    joined = "\n".join(str(it.get("text", "")) for it in (voiceover or []))
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
 def speech_end_seconds(words_data):

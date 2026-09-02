@@ -148,7 +148,9 @@ def main():
             seg_durs.append(seg_dur)
         cursor += seg_dur + seg["pause_after"]
 
-    words_data = {"leading_offset": LEADING_OFFSET_SEC, "lines": all_lines}
+    words_data = {"leading_offset": LEADING_OFFSET_SEC,
+                  "script_sha": timing_util.voiceover_sha(_cfg.get("voiceover", [])),
+                  "lines": all_lines}
     with open("vo-words.json", "w") as f:
         json.dump(words_data, f, indent=2)
 
