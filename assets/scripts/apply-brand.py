@@ -98,6 +98,22 @@ def _coerce_mascot(m):
     return {}
 
 
+def runtime_config(brand, subs, mem):
+    return {
+        "subs": subs,
+        "voiceover": brand.get("voiceover", []),
+        "voice": brand.get("voice", {}),
+        "scenes": brand.get("scenes", {}),
+        "palette": brand.get("palette", {}),
+        "memory_colors": mem,
+        "project": brand.get("project", {}),
+        "music": brand.get("music", {"mode": "procedural", "volume": 0.45}),
+        "verify": brand.get("verify", {}),
+        "auth": brand.get("auth", {}),
+        "mascot": _coerce_mascot(brand.get("mascot", {})),
+    }
+
+
 def deep_get(d, path, default=None):
     cur = d
     for key in path.split("."):
@@ -329,18 +345,7 @@ def main():
     rendered.append(os.path.join(args.out, "scene-data.sh"))
 
     # Emit config.json for runtime scripts
-    config = {
-        "subs": subs,
-        "voiceover": brand.get("voiceover", []),
-        "voice": brand.get("voice", {}),
-        "scenes": brand.get("scenes", {}),
-        "palette": brand.get("palette", {}),
-        "memory_colors": mem,
-        "project": brand.get("project", {}),
-        "music": brand.get("music", {"mode": "procedural", "volume": 0.45}),
-        "auth": brand.get("auth", {}),  # P2-1: optional login flow for make-auth.mjs
-        "mascot": _coerce_mascot(brand.get("mascot", {})),  # mascot overlay (spec 2026-06-12)
-    }
+    config = runtime_config(brand, subs, mem)
     with open(os.path.join(args.out, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 

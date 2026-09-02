@@ -105,18 +105,22 @@ voice:
 
 # ─── MUSIC ───────────────────────────────────────────────────────────────
 music:
-  mode: "procedural"               # "procedural" | "file" | "none"
-  style: "warm"                    # procedural style: "warm" (C-minor pad, calm) |
-                                   # "uplift" (I–vi–IV–V major progression, brighter/moving)
+  mode: "library"                  # "library" | "procedural" | "file" | "none"
+  style: "calm"                    # mood: "calm" | "uplift" | "tech" | "bugfix"
   volume: 0.45                     # bed level (ducked under voice automatically)
+  # library: a real CC0 track for the mood, fetched once from music/manifest.yaml into a
+  #   per-user cache (~/.cache/demo-video/music, %LOCALAPPDATA% on Windows), sha256-verified.
+  #   If the fetch fails the build warns and uses the procedural preset instead.
+  # procedural: an offline synthesized pad + arpeggio for the same moods.
+  # file: your own track. A missing file fails the build.
+  # file: "assets/track.mp3"
+  # none: voice only.
+  # The bed always matches the final video length (looped or trimmed, faded out).
 
-  # mode: file — supply your own track. FREE sources (no attribution / CC0):
-  #   • Pixabay Music      https://pixabay.com/music/  (filter "no attribution")
-  #   • Free Music Archive https://freemusicarchive.org/genre/Ambient/ (CC0)
-  #   • YouTube Audio Library (in YouTube Studio, free for any use)
-  # file: "assets/track.mp3"       # local path (project root or assets/)
-
-  # mode: none — voice only, no music bed.
+# verify:
+#   white_threshold: 120           # verify-final flash scan: a frame fails when its brightness
+#   flash_margin: 60               # (YAVG 0-255) exceeds BOTH the threshold and the file median
+#                                  # plus the margin, so a light-themed app does not trip it.
 
 # ─── BACKDROP ────────────────────────────────────────────────────────────
 # Photo behind the terminal frame. Recommended: workspace shot with view.

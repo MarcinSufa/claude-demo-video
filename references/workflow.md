@@ -10,10 +10,10 @@ brand.yaml
    ├──> [1] make-vo.py        → vo.mp3, vo-words.json
    │      └──> [2] make-captions.py → captions.ass, captions.srt
    │
-   ├──> [3] make-music.sh     → music.mp3  (procedural; replace with real track)
-   │
-   ├──> assets/templates/*    → [4] assemble.sh → final-rough.mp4
+   ├──> assets/templates/*    → [3] assemble.sh → final-rough.mp4
    │                                 (also uses normalized scenes in .normalized/)
+   │
+   ├──> (3)                   → [4] make-music.sh → music.mp3  (library CC0 track / procedural / file, fitted to [3])
    │
    └──> (1) + (3) + (4)       → [5] mix-final.sh → final-with-audio.mp4
             (2) + (5)         → [6] burn-captions.sh → final-with-captions.mp4
@@ -39,18 +39,22 @@ brand.yaml
 - Style: word being spoken = brass, before = bone, after = bone
 - Also generates `captions.srt` (line-level) for YouTube upload
 
-### 3. `make-music.sh` — Procedural ambient
-
-- Generates 60s warm pad via ffmpeg sine waves + reverb + lowpass
-- Placeholder only — replace `music.mp3` with real CC0 track from Pixabay/FMA for production
-
-### 4. `assemble.sh` — Scene normalization + crossfade
+### 3. `assemble.sh`: Scene normalization + crossfade
 
 - For each scene mp4, ffmpeg-normalizes to 1920×1080@30fps with `setpts=PTS/SPEEDUP`
 - Reads ACTUAL durations via ffprobe (don't hardcode!)
 - Computes xfade offsets cumulatively
 - Chains 6 xfade transitions
 - Output: `videos/final-rough.mp4` (no audio)
+
+### 4. `make-music.sh`: Music bed
+
+- Runs after assemble (step 3) so the bed length equals `final-rough.mp4` (looped or trimmed, faded out);
+  before the video exists it predicts the length from `scene-plan.json`
+- `mode: library`: `fetch-music.py` downloads the mood's CC0 track from `music/manifest.yaml`
+  into the per-user cache and verifies its sha256; on any failure it prints a WARNING and
+  falls back to the procedural preset of the same mood
+- `mode: procedural`: per-mood chord table, detuned pad plus plucked arpeggio, ffmpeg only
 
 ### 5. `mix-final.sh` — Audio mix
 

@@ -94,11 +94,13 @@ fi
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py,diorama_layout.py,make-diorama.py,diorama_plan.py} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py,diorama_layout.py,make-diorama.py,diorama_plan.py,fetch-music.py,glow_check.mjs,verify-final.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
 export DEMO_CONFIG=config.json
+# Library music: the CC0 manifest lives with the skill assets, not the vendored scripts.
+export DEMO_MUSIC_MANIFEST="$SKILL_ASSETS/music/manifest.yaml"
 # The pipeline runs from .build; export the project root so plan-scenes can
 # resolve user-relative scene source clips (e.g. before_after footage/*.mp4)
 # against it — same as the backdrop handling above.
@@ -226,9 +228,6 @@ fi
 # ─── 2-8. Pipeline ──────────────────────────────────────────────────────
 step 26 "Voiceover (Edge TTS)";     python make-vo.py
 step 34 "Captions";                 python make-captions.py
-# Always (re)generate so a changed music.mode/style/file actually takes effect
-# (previously cached by file existence, so style changes were silently ignored).
-step 40 "Music bed"; bash make-music.sh
 # P2-1: log in once if an auth block is configured (authed scenes reuse the session)
 if [ "$(python -c "import json;print(bool(json.load(open('config.json')).get('auth',{}).get('login_url')))")" = "True" ]; then
   step 46 "Auth login (storageState)"; node make-auth.mjs
@@ -239,7 +238,12 @@ if [ "$(python -c "import json;print(json.load(open('config.json')).get('scenes'
   step 76 "Auto-fit speed to voiceover"; python autofit.py
 fi
 step 80 "Assembling crossfade";     bash assemble.sh
+# Always regenerate, after assemble so the bed is fitted to the real video length.
+step 84 "Music bed";                bash make-music.sh
 step 90 "Mixing audio + captions";  bash mix-final.sh; bash burn-captions.sh
+step 94 "Verifying final";          python verify-final.py videos/final-with-captions.mp4 --rough videos/final-rough.mp4 \
+  --threshold "$(python -c "import json;print(json.load(open('config.json')).get('verify',{}).get('white_threshold',120))")" \
+  --margin "$(python -c "import json;print(json.load(open('config.json')).get('verify',{}).get('flash_margin',60))")"
 step 96 "Compositing frame";        node record-frame.mjs
 step 100 "Done"
 

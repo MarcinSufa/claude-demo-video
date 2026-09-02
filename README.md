@@ -12,7 +12,7 @@ A single `videos/final-framed.mp4` (1920×1080, ~50s) that shows **how your appl
 - 🎬 **Your real app, on screen** — drive a live URL (click, type, scroll, hover) and record the interaction, or render a designed HTML mockup for a feature you haven't built yet, or capture a terminal/CLI. Mix scene types freely.
 - 🎙️ **AI voiceover** narrating the feature — Microsoft Edge TTS (free, no API key, many languages/voices).
 - 📝 **Karaoke word-highlight captions** synced to the voice, readable on light *and* dark UI.
-- 🎵 **Music bed** — procedural ambient pad, your own CC0 track, or none — auto-ducked under the voice.
+- 🎵 **Music bed**: a CC0 track per mood (calm / uplift / tech / bugfix) from a checksummed library, a procedural pad, your own track, or none, fitted to the video length and auto-ducked under the voice.
 - 🖼️ **Beautiful framing** — your brand palette, fonts, logo and end cards; the demo can play inside a styled window composited on a real workspace photo.
 
 Built entirely with **free tools** — `ffmpeg`, Playwright headless Chromium, VHS (Charm), `edge-tts`. No Synthesia / HeyGen / After Effects subscription.
@@ -90,7 +90,7 @@ voiceover:
   - { text: "Now it's one screen.", pause_after: 0.6 }
   # ... ~12-15 short lines, ~80 words, ~45s of speech
 
-music: { mode: "file", file: "assets/track.mp3" }   # or "procedural" | "none"
+music: { mode: "library", style: "uplift" }   # or "procedural" | "file" | "none"
 end_cards: { tagline: "Orders, handled.", spec_line: "fast · clear · reliable", url_pill: "asistel.io" }
 ```
 
@@ -115,12 +115,13 @@ Full schema: [references/brand-config.md](./references/brand-config.md) · scene
 apply-brand.py    → compile brand.yaml → .build/ (rendered templates + Google Fonts link)
 make-vo.py        → vo.mp3 + vo-words.json     (Edge TTS streaming with word boundaries)
 make-captions.py  → captions.ass + .srt        (karaoke + standard subtitles)
-make-music.sh     → music.mp3                  (procedural / your file / none)
 plan-scenes.py    → scene-plan.json            (resolve your scene sequence)
 build-scenes.sh   → one clip per scene         (real UI, mockup, terminal, graph… cached)
 assemble.sh       → final-rough.mp4            (scenes crossfaded + sped up)
+make-music.sh     → music.mp3                  (library CC0 track / procedural / your file / none, fitted to the video)
 mix-final.sh      → final-with-audio.mp4       (voice + music ducked; gates VO-overruns-video)
 burn-captions.sh  → final-with-captions.mp4    (captions burned in)
+verify-final.py   → blocks the build on duration drift, missing or silent audio, or a white flash
 record-frame.mjs  → final-framed.mp4           (optional window-on-desk composite)
 ```
 
@@ -152,7 +153,7 @@ The trade-off: **looks like a professional product film** without the monthly su
 
 Works end-to-end and is config-driven for any brand. Rough edges:
 
-- Procedural music is a serviceable placeholder — supply a real CC0 track (Pixabay / Free Music Archive / YouTube Audio Library) for production.
+- The music library lists two CC0 tracks per mood in `assets/music/manifest.yaml`, downloaded on first build and cached per user; for a specific piece use `mode: file`.
 - `screen_recording`/auth'd routes are supported but lightly tested; complex OAuth login flows may need an on-camera login.
 - Line endings: scripts run fine via the rendered LF outputs; a repo-wide line-ending normalization pass is pending (tracked).
 
