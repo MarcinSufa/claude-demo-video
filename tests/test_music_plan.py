@@ -63,6 +63,26 @@ class CompositionPlan(unittest.TestCase):
         self.assertEqual(result["negative_global_styles"], ["vocals", "silence", "drops out"])
 
 
+class MusicCfgSha(unittest.TestCase):
+    def test_volume_only_change_keeps_the_same_sha(self):
+        a = music_plan.music_cfg_sha({"mode": "elevenlabs", "prompt": "calm", "volume": 0.45})
+        b = music_plan.music_cfg_sha({"mode": "elevenlabs", "prompt": "calm", "volume": 0.9})
+        self.assertEqual(a, b)
+
+    def test_other_field_change_changes_the_sha(self):
+        a = music_plan.music_cfg_sha({"mode": "elevenlabs", "prompt": "calm"})
+        b = music_plan.music_cfg_sha({"mode": "elevenlabs", "prompt": "different"})
+        self.assertNotEqual(a, b)
+
+    def test_key_order_independent(self):
+        a = music_plan.music_cfg_sha({"mode": "elevenlabs", "prompt": "calm"})
+        b = music_plan.music_cfg_sha({"prompt": "calm", "mode": "elevenlabs"})
+        self.assertEqual(a, b)
+
+    def test_none_is_empty_config(self):
+        self.assertEqual(music_plan.music_cfg_sha(None), music_plan.music_cfg_sha({}))
+
+
 class FindDropouts(unittest.TestCase):
     def test_excludes_head_and_tail_closes_eof_open_silence(self):
         stderr = (

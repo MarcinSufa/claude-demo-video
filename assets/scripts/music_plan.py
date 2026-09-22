@@ -4,6 +4,8 @@ Pure functions only -- no ffmpeg, no network. Used by spend-gate.py (estimate)
 and make-music-elevenlabs.py (real build) so both agree on the exact plan
 shape (and therefore the exact cache/approval key).
 """
+import hashlib
+import json
 import math
 import re
 
@@ -108,6 +110,16 @@ def composition_plan(music_cfg, sections):
         "negative_global_styles": negative,
         "sections": sections,
     }
+
+
+def music_cfg_sha(music_cfg):
+    """Fingerprint of the music config that actually changes WHAT gets requested,
+    excluding `volume` (a post-mix bed level, never sent to the API -- A2.2).
+    Used to invalidate a spend-gate approval when the request itself changed,
+    while a volume-only edit keeps the existing approval valid."""
+    filtered = {k: v for k, v in (music_cfg or {}).items() if k != "volume"}
+    canonical = json.dumps(filtered, sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def find_dropouts(silencedetect_stderr, total_s, head=0.5, tail=3.0):

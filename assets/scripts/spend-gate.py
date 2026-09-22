@@ -1,9 +1,9 @@
 """spend-gate.py -- estimate/refuse billed ElevenLabs calls before any network I/O.
 
-Run from `.build` (build.sh copies elevenlabs_api.py, timing_util.py alongside).
-Reads config.json + scene-plan.json + the $DEMO_ROOT caches that make-vo.py
-would consult, and reproduces make-vo's exact TTS cache keys -- this script
-itself never performs network I/O.
+Run from `.build` (build.sh copies elevenlabs_api.py, timing_util.py, music_plan.py
+alongside). Reads config.json + scene-plan.json + the $DEMO_ROOT caches that
+make-vo.py would consult, and reproduces make-vo's exact TTS cache keys -- this
+script itself never performs network I/O.
 
   python spend-gate.py estimate   # print the Billed services block + approval code, exit 0
   python spend-gate.py check      # exit 0 if nothing uncached (or approved), else print + exit 4
@@ -17,6 +17,16 @@ deadlocking approval. Music is approved as a BUDGET (`music_max_seconds`),
 never a specific composition-plan hash -- the real plan can only be built once
 the video is actually assembled, and an unchanged budget must not force
 re-approval on every rebuild.
+
+Amendment A2: a stale record from a PRIOR build must never silently authorize
+a later, different request. `check` deletes any existing record FIRST, before
+any other work, and only ever writes a fresh one atomically after a pass --
+so a failed check always leaves no record at all. The record also carries
+`voiceover_sha` / `music_cfg_sha` fingerprints of the exact config it was
+approved against (make-vo.py / make-music-elevenlabs.py refuse on mismatch),
+and `retry_rejected` -- whether DEMO_RETRY_REJECTED=1 was set at check time --
+which is the ONLY thing that authorizes retrying a previously rejected music
+track (the env var alone, read later by make-music, is not enough).
 """
 import json
 import math
@@ -25,6 +35,7 @@ import re
 import sys
 
 import elevenlabs_api
+import music_plan
 import timing_util
 
 CONFIG = os.environ.get("DEMO_CONFIG", "config.json")
@@ -101,7 +112,7 @@ def rejected_tracks(root):
     return sorted(f for f in os.listdir(d) if f.endswith(".mp3"))
 
 
-def billed_block(tts, music_billed, music_max_seconds):
+def billed_block(tts, music_billed, music_max_seconds, retry_billed):
     lines = []
     billed = False
     if tts and tts["n_uncached"] > 0:
@@ -110,20 +121,68 @@ def billed_block(tts, music_billed, music_max_seconds):
     if music_billed:
         billed = True
         lines.append(f"music: uncached, ~{music_max_seconds} s requested")
+    if retry_billed:
+        billed = True
+        lines.append("retry of a rejected music track")
     if not billed:
         return "Billed services: none", False
     return "Billed services\n" + "\n".join(f"  {l}" for l in lines), True
 
 
-def _write_approval(code, tts_keys, music_max_seconds):
-    record = {"code": code, "tts_keys": tts_keys, "music_max_seconds": music_max_seconds}
-    with open(APPROVAL_RECORD, "w", encoding="utf-8") as f:
+def _write_approval(code, tts_keys, music_max_seconds, voiceover_sha, music_cfg_sha, retry_rejected):
+    record = {
+        "code": code,
+        "tts_keys": tts_keys,
+        "music_max_seconds": music_max_seconds,
+        "voiceover_sha": voiceover_sha,
+        "music_cfg_sha": music_cfg_sha,
+        "retry_rejected": retry_rejected,
+    }
+    tmp_path = APPROVAL_RECORD + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(record, f)
+    os.replace(tmp_path, APPROVAL_RECORD)
+
+
+_RECORD_FIELDS = ("code", "tts_keys", "music_max_seconds", "voiceover_sha",
+                   "music_cfg_sha", "retry_rejected")
+
+
+def _is_recognized_record(record):
+    return isinstance(record, dict) and any(k in record for k in _RECORD_FIELDS)
 
 
 def main(argv):
     if len(argv) != 2 or argv[1] not in ("estimate", "check"):
         sys.exit("usage: spend-gate.py estimate|check")
+
+    if argv[1] == "check":
+        # A2.1: a stale record must never authorize a DIFFERENT later request.
+        # Remove it before anything else can fail/short-circuit -- a failed
+        # check must leave no record at all, not a leftover from a prior run.
+        # A record that doesn't even look like ours (unreadable, or a foreign/
+        # corrupt shape -- not a normal re-run's own well-formed prior record)
+        # is surfaced as a one-time refusal so it's never silently discarded:
+        # the operator sees it was there, then re-runs check on a clean slate.
+        unrecognized = False
+        if os.path.exists(APPROVAL_RECORD):
+            try:
+                with open(APPROVAL_RECORD, encoding="utf-8") as f:
+                    old_record = json.load(f)
+                unrecognized = not _is_recognized_record(old_record)
+            except (OSError, ValueError):
+                unrecognized = True
+            try:
+                os.remove(APPROVAL_RECORD)
+            except FileNotFoundError:
+                pass
+        if unrecognized:
+            print(
+                "found and removed a stale or unrecognized .spend-approved.json "
+                "- run spend-gate check again now that it is cleared.",
+                file=sys.stderr)
+            return 4
+
     if not os.path.exists(CONFIG):
         sys.exit(f"Missing {CONFIG}")
     if not os.path.exists(PLAN):
@@ -136,6 +195,7 @@ def main(argv):
 
     music = cfg.get("music", {})
     music_mode = music.get("mode") == "elevenlabs"
+    retry_env = os.environ.get("DEMO_RETRY_REJECTED") == "1"
 
     music_max_seconds = None
     if music_mode:
@@ -148,15 +208,20 @@ def main(argv):
                 file=sys.stderr)
             return 4
 
+    rejected = rejected_tracks(root) if music_mode else []
+    retry_billed = music_mode and retry_env and bool(rejected)
+
     tts = tts_estimate(cfg, root)
     uncached_keys = tts["uncached_keys"] if tts else []
-    block, billed = billed_block(tts, music_mode, music_max_seconds)
+    block, billed = billed_block(tts, music_mode, music_max_seconds, retry_billed)
     music_part = f"music<={music_max_seconds}s" if music_mode else None
     code = elevenlabs_api.approval_code(uncached_keys, music_part)
 
+    voiceover_sha = timing_util.voiceover_sha(cfg.get("voiceover", []))
+    music_cfg_sha = music_plan.music_cfg_sha(music)
+
     if argv[1] == "estimate":
         print(block)
-        rejected = rejected_tracks(root)
         if rejected:
             print(f"note: {len(rejected)} previously rejected track(s) in "
                   ".music-cache/elevenlabs/rejected/ (silence dropout) -- retry "
@@ -168,10 +233,10 @@ def main(argv):
 
     # check
     if not billed:
-        _write_approval(None, [], music_max_seconds)
+        _write_approval(None, [], music_max_seconds, voiceover_sha, music_cfg_sha, retry_env)
         return 0
     if os.environ.get("DEMO_APPROVE_SPEND") == code:
-        _write_approval(code, uncached_keys, music_max_seconds)
+        _write_approval(code, uncached_keys, music_max_seconds, voiceover_sha, music_cfg_sha, retry_env)
         return 0
     print(block)
     print(f"APPROVAL CODE: {code}")

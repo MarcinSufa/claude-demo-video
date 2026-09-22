@@ -124,7 +124,7 @@ def _load_approval():
         return None
 
 
-# ── elevenlabs provider ─────────────────────────────────────────────────
+# elevenlabs provider ─────────────────────────────────────────────────
 def gen_segments_elevenlabs():
     root = os.environ.get("DEMO_ROOT", "..")
 
@@ -154,12 +154,24 @@ def gen_segments_elevenlabs():
     uncached = [p for p in planned if not p["cached"]]
     if uncached:
         approved = _load_approval()
+        # A2.2: an approval only covers the EXACT voiceover it was computed
+        # against -- a script edited after `spend-gate check` must never ride
+        # the old approval, even if the edit happens to keep some other line
+        # uncached-with-a-matching-key by coincidence.
+        if approved is not None:
+            live_sha = timing_util.voiceover_sha(_cfg.get("voiceover", []))
+            if approved.get("voiceover_sha") != live_sha:
+                print(
+                    "voiceover changed since the spend-gate approval (voiceover_sha "
+                    "mismatch) - run spend-gate again (see SKILL.md Cost-gate "
+                    "protocol). No network call made.", file=sys.stderr)
+                sys.exit(4)
         approved_keys = set((approved or {}).get("tts_keys") or [])
         missing = [p for p in uncached if p["cache_key"] not in approved_keys]
         if missing:
             print(
                 f"{len(missing)} uncached elevenlabs TTS line(s) are not in the approved "
-                "spend record — run spend-gate first (see SKILL.md Cost-gate protocol). "
+                "spend record - run spend-gate first (see SKILL.md Cost-gate protocol). "
                 "No network call made.", file=sys.stderr)
             sys.exit(4)
 
@@ -168,7 +180,7 @@ def gen_segments_elevenlabs():
         key = elevenlabs_api.load_key(root=root)
         if not key:
             print(
-                "voice.provider=elevenlabs but no API key found — set ELEVENLABS_API_KEY "
+                "voice.provider=elevenlabs but no API key found - set ELEVENLABS_API_KEY "
                 "or DEMO_ELEVENLABS_ENV_FILE (or <root>/.env)", file=sys.stderr)
             sys.exit(3)
 
@@ -213,7 +225,7 @@ def main():
     elif PROVIDER == "elevenlabs":
         segments = gen_segments_elevenlabs()
     else:
-        sys.exit(f"Unknown voice.provider '{PROVIDER}' — use edge-tts or elevenlabs")
+        sys.exit(f"Unknown voice.provider '{PROVIDER}' - use edge-tts or elevenlabs")
 
     print("[2/3] Concatenating with pacing pauses")
     vo_audio.concat_with_pauses(
