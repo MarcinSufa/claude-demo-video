@@ -10,6 +10,29 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "assets", "scri
 import timing_util  # noqa: E402
 
 
+class CalibrationKey(unittest.TestCase):
+    def test_edge_tts_unchanged_shape(self):
+        self.assertEqual(
+            timing_util.calibration_key({"voice_id": "en-US-AndrewNeural", "rate": "+0%"}),
+            "en-US-AndrewNeural|+0%")
+
+    def test_edge_tts_is_the_default_provider(self):
+        self.assertEqual(
+            timing_util.calibration_key({"voice_id": "v", "rate": "+5%"}),
+            timing_util.calibration_key({"voice_id": "v", "rate": "+5%", "provider": "edge-tts"}))
+
+    def test_elevenlabs_keys_on_voice_and_model_not_rate(self):
+        self.assertEqual(
+            timing_util.calibration_key({
+                "provider": "elevenlabs", "voice_id": "v1", "model_id": "eleven_v2", "rate": "+10%"}),
+            "elevenlabs:v1:eleven_v2")
+
+    def test_elevenlabs_default_model(self):
+        self.assertEqual(
+            timing_util.calibration_key({"provider": "elevenlabs", "voice_id": "v1"}),
+            "elevenlabs:v1:eleven_multilingual_v2")
+
+
 class SpeechEndSeconds(unittest.TestCase):
     def test_returns_end_of_last_spoken_word(self):
         # vo-words.json shape from make-vo.py: top-level "lines", each with line_end

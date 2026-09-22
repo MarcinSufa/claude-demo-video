@@ -13,6 +13,21 @@ def voiceover_sha(voiceover):
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
+def calibration_key(voice_cfg):
+    """Cache key for vo-calibration.json, identifying a (provider, voice, rate/model)
+    combination. edge-tts keeps the original `f"{voice_id}|{rate}"` (unchanged, so
+    existing caches survive); elevenlabs has no `rate` (that's edge-only), so it
+    keys on voice_id + model_id instead."""
+    provider = voice_cfg.get("provider", "edge-tts")
+    if provider == "elevenlabs":
+        voice_id = voice_cfg.get("voice_id", "")
+        model_id = voice_cfg.get("model_id", "eleven_multilingual_v2")
+        return f"elevenlabs:{voice_id}:{model_id}"
+    voice_id = voice_cfg.get("voice_id", "en-US-AndrewNeural")
+    rate = voice_cfg.get("rate", "+0%")
+    return f"{voice_id}|{rate}"
+
+
 def speech_end_seconds(words_data):
     """End time (s) of the last spoken word, from vo-words.json data.
 

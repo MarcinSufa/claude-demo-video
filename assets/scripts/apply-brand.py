@@ -21,6 +21,27 @@ except ImportError:
     sys.exit("Missing pyyaml — run: pip install --user pyyaml")
 
 
+_SECRET_KEY_RE = re.compile(r"(?i)(api[_-]?key|secret|token|password|xi[_-]?api)")
+
+
+def refuse_secrets(node, path=""):
+    """Refuse any brand.yaml mapping key anywhere that looks like a secret
+    (api_key, secret, token, password, xi_api). Never prints the value —
+    only the dotted path — so a pasted-in key is never echoed to stdout."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            dotted = f"{path}.{k}" if path else str(k)
+            if _SECRET_KEY_RE.search(str(k)):
+                sys.exit(
+                    f"brand.yaml: refusing key '{dotted}' — looks like a secret "
+                    "(matches api key/secret/token/password). Use an environment "
+                    "variable (e.g. ELEVENLABS_API_KEY) instead of brand.yaml.")
+            refuse_secrets(v, dotted)
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            refuse_secrets(v, f"{path}[{i}]")
+
+
 def hex_to_ansi(hex_color):
     """#0a0705 -> '10;7;5' for \\033[38;2;R;G;Bm true-color ANSI."""
     h = hex_color.lstrip("#")
@@ -261,6 +282,8 @@ def main():
 
     with open(args.brand, encoding="utf-8") as f:
         brand = yaml.safe_load(f)
+
+    refuse_secrets(brand)
 
     subs, mem = build_substitutions(brand)
 
