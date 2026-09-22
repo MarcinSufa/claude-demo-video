@@ -128,6 +128,8 @@ music:
   #   (SKILL.md); nothing billed without an explicit --approve-spend <code>.
   # styles: ["instrumental", "cinematic ambient electronic", "warm analog"]  # optional
   # negative_styles: ["harsh"]       # optional; vocals/silence/drops out always added
+  # max_seconds: 60                  # only needed if any scene has no `duration:` -
+  #   spend-gate otherwise predicts the budget from scene durations automatically.
   # file: "assets/track.mp3"
   # none: voice only.
   # The bed always matches the final video length (looped or trimmed, faded out).

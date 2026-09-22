@@ -360,10 +360,33 @@ recompute or print their own approval code, so a later step can't drift out of
 sync with what the user actually approved. Music is approved as a **budget**
 (`music_max_seconds`, from every scene's `duration:` or an explicit
 `music.max_seconds`), not a specific track — the real track is checked against
-that ceiling when it's actually composed. A track that was already rejected
-for a silence dropout is never silently re-billed on rerun: it stays
-quarantined under `.music-cache/elevenlabs/rejected/` and the build refuses
-(exit 5) unless `DEMO_RETRY_REJECTED=1` is set.
+that ceiling when it's actually composed.
+
+**The approval record is single-use per request.** `check` deletes any
+existing `.spend-approved.json` FIRST, before doing anything else, so a
+leftover record from a previous build can never authorize a different one; it
+only writes a fresh record after passing. The record also carries
+`voiceover_sha` and `music_cfg_sha` — fingerprints of the exact voiceover
+script and music config (minus `volume`, a post-mix level) it was approved
+against — so editing either AFTER approval but before the real run refuses
+(exit 4) instead of silently billing something the user never saw. If
+`.spend-approved.json` exists but doesn't look like one `spend-gate.py`
+itself wrote (unreadable, or missing every expected field — e.g. left over
+from an interrupted write, or a foreign file), `check` removes it and refuses
+once (exit 4) so the operator sees it happened, then passes normally on the
+next `check`.
+
+A track that was already rejected for a silence dropout is never silently
+re-billed on rerun: it stays quarantined under
+`.music-cache/elevenlabs/rejected/<key>-<n>.mp3` (each attempt gets its own
+numbered file, so evidence of every rejection survives) and the build
+refuses (exit 5) naming the file. Retrying it is a TWO-step opt-in, not just
+setting an env var: `DEMO_RETRY_REJECTED=1` must be set when `spend-gate
+check` runs (which stamps `retry_rejected: true` into the approval record —
+`spend-gate estimate` also lists it as a billed "retry of a rejected music
+track" line so the user sees it before approving) — setting the env var only
+for the later `make-music-elevenlabs.py` step, without re-running
+`spend-gate check` first, has no effect and the refusal stands.
 
 Each line/track is cached (`.tts-cache/elevenlabs/`, `.music-cache/elevenlabs/`),
 so re-running an already-approved build never re-bills unchanged content.

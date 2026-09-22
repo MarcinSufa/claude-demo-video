@@ -159,6 +159,41 @@ explicit approval, then re-run with `--approve-spend <the printed code>`. A stal
 code (from before a script/config edit changed the request) is refused again —
 re-run `--plan` to get the current one.
 
+### Build refuses citing "voiceover_sha" or "music_cfg_sha" mismatch
+
+**Cause:** the approval record (`.build/.spend-approved.json`) only covers the
+EXACT voiceover script / music config it was approved against. Editing
+`brand.yaml`'s `voiceover:` or `music:` (anything except `music.volume`)
+after running `spend-gate check` but before the real build invalidates that
+approval on purpose — otherwise an edit made after approval could ride the
+old yes.
+
+**Fix:** re-run `bash scripts/build.sh --plan`, review the new `Billed
+services` block (it reflects the edit), and re-approve with the new code.
+
+### Build refuses citing a "stale or unrecognized .spend-approved.json"
+
+**Cause:** `.build/.spend-approved.json` existed but wasn't something
+`spend-gate.py` itself wrote (unreadable, or missing every field it expects)
+— e.g. left over from an interrupted write, a hand-edited file, or an old
+pre-upgrade format. `check` removes it and refuses once so this is visible,
+rather than silently trusting or silently discarding it.
+
+**Fix:** just run `bash scripts/build.sh --plan` / `check` again — the stale
+file is already gone, and this run computes a fresh approval normally.
+
+### `music.mode: elevenlabs` keeps refusing a retry even with `DEMO_RETRY_REJECTED=1`
+
+**Cause:** a previously rejected track's quarantine is only re-billable when
+the *approval record* carries `retry_rejected: true` — that's set by
+`spend-gate check`, not by the env var alone. Setting `DEMO_RETRY_REJECTED=1`
+only for the build/`make-music-elevenlabs.py` step, without having it set
+when `spend-gate check` last ran, has no effect.
+
+**Fix:** set `DEMO_RETRY_REJECTED=1` and re-run `bash scripts/build.sh --plan`
+so `spend-gate estimate` lists "retry of a rejected music track" as billed,
+then approve and re-run the build with the SAME env var still set.
+
 ### `remotion` scene: "Missing: remotion/node_modules"
 
 `assets/remotion` is opt-in — not copied by `init` (its package.json pins a

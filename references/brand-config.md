@@ -205,16 +205,25 @@ music:
   negative_styles: ["harsh"]        # optional, "vocals"/"silence"/"drops out" always added
   model_id: "music_v1"              # pinned default; only change if you know why
   # seed: 42                        # optional, for reproducibility
+  # max_seconds: 60                 # only needed if any scene has no `duration:` —
+                                     # spend-gate otherwise predicts it from scene durations
 ```
 
-Same cost gate as `voice.provider: elevenlabs` above — cached under
-`.music-cache/elevenlabs/` by a hash of the composition plan, refused
-without an approval code, no network call on refusal. After a successful
-(uncached) request, the build runs `ffmpeg silencedetect` on the result; a
-detected silence dropout quarantines the file to
-`.music-cache/elevenlabs/rejected/` and **fails the build with no
-fallback** — a paid call that produced a bad track is retried explicitly,
-never silently swapped for `procedural`/`library`.
+Same cost gate as `voice.provider: elevenlabs` above — approved as a
+**budget** (`music_max_seconds`), not a hash of the exact composition plan;
+`spend-gate` predicts it from every scene's `duration:` (rounded up to 5s),
+or falls back to `music.max_seconds` above when any scene has none — set it
+explicitly then, or `estimate`/`check` refuse naming it. The real track is
+cached under `.music-cache/elevenlabs/` and checked against that budget when
+it's actually composed. After a successful (uncached) request, the build
+runs `ffmpeg silencedetect` on the result; a detected silence dropout
+quarantines the file to `.music-cache/elevenlabs/rejected/<key>-<n>.mp3`
+(each attempt numbered, so nothing overwrites the evidence) and **fails the
+build with no fallback** — a paid call that produced a bad track is retried
+explicitly, never silently swapped for `procedural`/`library`. Retrying is a
+two-step opt-in: set `DEMO_RETRY_REJECTED=1` when running `spend-gate
+check` (not just at build time) — it stamps the approval record, and only
+that record's flag, not the env var alone, authorizes the retry.
 
 ### `verify`
 ```yaml
