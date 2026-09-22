@@ -53,6 +53,38 @@ class Redact(unittest.TestCase):
         self.assertEqual(elevenlabs_api.redact("x", ""), "x")
 
 
+class CharacterCost(unittest.TestCase):
+    def test_exact_lowercase_key(self):
+        headers = {"character-cost": "42"}
+        self.assertEqual(elevenlabs_api.character_cost(headers), "42")
+
+    def test_mixed_case_key(self):
+        headers = {"Character-Cost": "42"}
+        self.assertEqual(elevenlabs_api.character_cost(headers), "42")
+
+    def test_legacy_xi_prefix_key(self):
+        headers = {"xi-character-cost": "42"}
+        self.assertEqual(elevenlabs_api.character_cost(headers), "42")
+
+    def test_legacy_xi_prefix_mixed_case(self):
+        headers = {"Xi-Character-Cost": "42"}
+        self.assertEqual(elevenlabs_api.character_cost(headers), "42")
+
+    def test_documented_key_preferred_over_legacy(self):
+        headers = {"character-cost": "42", "xi-character-cost": "99"}
+        self.assertEqual(elevenlabs_api.character_cost(headers), "42")
+
+    def test_missing_key_returns_unknown(self):
+        headers = {"other-header": "value"}
+        self.assertEqual(elevenlabs_api.character_cost(headers), "unknown")
+
+    def test_none_headers_returns_unknown(self):
+        self.assertEqual(elevenlabs_api.character_cost(None), "unknown")
+
+    def test_empty_headers_returns_unknown(self):
+        self.assertEqual(elevenlabs_api.character_cost({}), "unknown")
+
+
 class AlignmentToWords(unittest.TestCase):
     def test_merges_punctuation_and_collapses_spaces(self):
         chars = list("Hello world !")

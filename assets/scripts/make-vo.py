@@ -193,7 +193,7 @@ def gen_segments_elevenlabs():
                 f.write(audio)
             os.replace(tmp_audio, p["audio_path"])
             sidecar = {"alignment": alignment,
-                       "character_cost": headers.get("xi-character-cost", "unknown")}
+                       "character_cost": elevenlabs_api.character_cost(headers)}
             tmp_json = p["json_path"] + ".tmp"
             with open(tmp_json, "w", encoding="utf-8") as f:
                 json.dump(sidecar, f)
@@ -208,7 +208,7 @@ def gen_segments_elevenlabs():
                   "duration_sec": w["duration_sec"]} for w in words_raw]
         segments.append({"path": p["audio_path"], "text": p["text"],
                           "pause_after": p["pause"], "words": words})
-        print(f"  seg: {len(words)} words {'(cached)' if p['cached'] else ''} · {p['text'][:55]}")
+        print(f"  seg: {len(words)} words {'(cached)' if p['cached'] else ''} - {p['text'][:55]}")
     return segments
 
 

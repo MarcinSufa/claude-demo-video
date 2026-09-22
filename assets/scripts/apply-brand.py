@@ -57,7 +57,7 @@ def refuse_secrets(node, path=""):
                 continue
             if _looks_like_secret_key(k):
                 sys.exit(
-                    f"brand.yaml: refusing key '{dotted}' — looks like a secret "
+                    f"brand.yaml: refusing key '{dotted}' - looks like a secret "
                     "(matches api_key/apikey/secret/token/password/xi_api_key). "
                     "Use an environment variable (e.g. ELEVENLABS_API_KEY) instead "
                     "of brand.yaml.")

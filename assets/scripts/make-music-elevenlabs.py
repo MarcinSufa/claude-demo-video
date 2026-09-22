@@ -205,7 +205,7 @@ def main():
             shutil.move(tmp_path, rejected_path)
             elevenlabs_api.ledger_append(root, {
                 "kind": "music", "cache_key": cache_key, "status": "rejected_dropout",
-                "character_cost": headers.get("xi-character-cost", "unknown")})
+                "character_cost": elevenlabs_api.character_cost(headers)})
             print(f"elevenlabs music has silence dropouts: {dropouts} - quarantined "
                   f"to {rejected_path}. Build failed; no fallback is generated - "
                   "retry the build.", file=sys.stderr)
@@ -214,7 +214,7 @@ def main():
         os.replace(tmp_path, cached_path)
         elevenlabs_api.ledger_append(root, {
             "kind": "music", "cache_key": cache_key, "status": "success",
-            "character_cost": headers.get("xi-character-cost", "unknown")})
+            "character_cost": elevenlabs_api.character_cost(headers)})
 
     shutil.copyfile(cached_path, args.output)
     print(f"make-music-elevenlabs: -> {args.output} ({total_s:.1f}s, cache {cache_key[:12]})")

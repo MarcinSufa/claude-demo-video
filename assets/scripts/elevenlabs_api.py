@@ -59,6 +59,28 @@ def redact(text, key):
     return text.replace(key, "<redacted>")
 
 
+def character_cost(headers):
+    """Case-insensitive lookup of the character-cost header.
+
+    HTTP headers should be case-insensitive. When dict(resp.getheaders()) converts
+    response headers to a dict, the case depends on what the server sends. This helper
+    checks both the documented "character-cost" and legacy "xi-character-cost" spellings,
+    returning "unknown" if neither is found.
+    """
+    if not headers:
+        return "unknown"
+    # Try exact lookups for both documented and legacy variants
+    for key in ("character-cost", "xi-character-cost"):
+        if key in headers:
+            return headers[key]
+    # Try case-insensitive lookup
+    headers_lower = {k.lower(): v for k, v in headers.items()}
+    for key in ("character-cost", "xi-character-cost"):
+        if key in headers_lower:
+            return headers_lower[key]
+    return "unknown"
+
+
 def alignment_to_words(alignment):
     chars = alignment.get("characters") if isinstance(alignment, dict) else None
     starts = alignment.get("character_start_times_seconds") if isinstance(alignment, dict) else None
