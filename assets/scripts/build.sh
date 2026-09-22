@@ -246,7 +246,8 @@ if ! curl -s -o /dev/null http://localhost:8765/; then
 fi
 
 # ─── 2-8. Pipeline ──────────────────────────────────────────────────────
-step 26 "Voiceover (Edge TTS)";     python make-vo.py
+VO_LABEL="Edge TTS"; [ "$VOICE_PROVIDER" = "elevenlabs" ] && VO_LABEL="ElevenLabs"
+step 26 "Voiceover ($VO_LABEL)";    python make-vo.py
 step 34 "Captions";                 python make-captions.py
 # P2-1: log in once if an auth block is configured (authed scenes reuse the session)
 if [ "$(python -c "import json;print(bool(json.load(open('config.json')).get('auth',{}).get('login_url')))")" = "True" ]; then

@@ -39,6 +39,27 @@ class ApplyBrandSecrets(unittest.TestCase):
         result = self._run("project:\n  name: Demo\n  url: demo.test\n")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_does_not_false_positive_on_plural_or_partial_words(self):
+        # review round 1 / P3: whole-segment match only -- "tokens" contains
+        # "token" as a substring but must not be refused.
+        result = self._run(
+            "scenes:\n  api_tokens_seen: 3\n  attempts: 1\nproject:\n  name: Demo\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_voice_pronounce_keys_are_exempt(self):
+        # pronounce keys are arbitrary brand terms to respell for TTS, not
+        # config -- a term that happens to look secret-shaped must not refuse.
+        result = self._run(
+            "voice:\n  pronounce:\n    SecretSauce: \"Secret Sauce\"\n"
+            "    ApiToken: \"A P I Token\"\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_refuses_apikey_and_api_key_variants(self):
+        for snippet in ("voice:\n  apiKey: x\n", "voice:\n  api_key: x\n", "voice:\n  apikey: x\n"):
+            with self.subTest(snippet=snippet):
+                result = self._run(snippet)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

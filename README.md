@@ -1,6 +1,6 @@
 # claude-demo-video
 
-> Turn your app into a beautiful ~50-second **feature film** — record your real UI, narrate how it works, and the skill scores it with music, burns in synced captions, and composites it into a polished launch video. One `brand.yaml` drives everything. Zero paid services.
+> Turn your app into a beautiful ~50-second **feature film** — record your real UI, narrate how it works, and the skill scores it with music, burns in synced captions, and composites it into a polished launch video. One `brand.yaml` drives everything. Free by default; optional paid ElevenLabs voice/music, always cost-gated (see below).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange)]()
@@ -10,14 +10,15 @@
 A single `videos/final-framed.mp4` (1920×1080, ~50s) that shows **how your application works** — in the polished aesthetic of an Anthropic/Linear-style product film:
 
 - 🎬 **Your real app, on screen** — drive a live URL (click, type, scroll, hover) and record the interaction, or render a designed HTML mockup for a feature you haven't built yet, or capture a terminal/CLI. Mix scene types freely.
-- 🎙️ **AI voiceover** narrating the feature — Microsoft Edge TTS (free, no API key, many languages/voices).
+- 🎙️ **AI voiceover** narrating the feature — Microsoft Edge TTS by default (free, no API key, many languages/voices), or optional **paid** ElevenLabs for higher fidelity (cost-gated, see below).
 - 📝 **Karaoke word-highlight captions** synced to the voice, readable on light *and* dark UI.
-- 🎵 **Music bed**: a CC0 track per mood (calm / uplift / tech / bugfix) from a checksummed library, a procedural pad, your own track, or none, fitted to the video length and auto-ducked under the voice.
+- 🎵 **Music bed**: a CC0 track per mood (calm / uplift / tech / bugfix) from a checksummed library, a procedural pad, your own track, or none — or optional **paid** ElevenLabs Music composed to the real scene timing — fitted to the video length and auto-ducked under the voice.
 - 🖼️ **Beautiful framing** — your brand palette, fonts, logo and end cards; the demo can play inside a styled window composited on a real workspace photo.
+- 🎞️ **Optional Remotion scenes** — a rendered React composition as a scene type (opt-in package, non-MIT licence — see `remotion/README.md`).
 
-Built entirely with **free tools** — `ffmpeg`, Playwright headless Chromium, VHS (Charm), `edge-tts`. No Synthesia / HeyGen / After Effects subscription.
+Built entirely with **free tools by default** — `ffmpeg`, Playwright headless Chromium, VHS (Charm), `edge-tts`. No Synthesia / HeyGen / After Effects subscription.
 
-> **Free to render** — no API keys, no per-video fees, no subscriptions; the whole toolchain runs locally. Authoring the brand, scenes, and script is the real work — a few minutes by hand, or with an AI assistant like Claude Code (which is where the time and tokens go).
+> **Free to render by default** — no API keys, no per-video fees, no subscriptions; the whole toolchain runs locally. Two providers are optional and **paid**: ElevenLabs voice (`voice.provider: elevenlabs`) and ElevenLabs Music (`music.mode: elevenlabs`). Both are gated by a mandatory cost-gate protocol — `build --plan` shows exactly what would be billed and prints an approval code; nothing is billed without explicit approval (`--approve-spend <code>`). See SKILL.md's *Cost-gate protocol*. Authoring the brand, scenes, and script is the real work — a few minutes by hand, or with an AI assistant like Claude Code (which is where the time and tokens go).
 
 ## Scene types — compose your own video
 
@@ -136,11 +137,11 @@ Scene captures are **cached** — edit only the voiceover and the next build reu
 - **Python — the brains.** Config + orchestration math: the brand compiler (`apply-brand.py`), voiceover and caption generation, scene planning, the timing model + the *truncation gate* (`timing_util.py` / `check-timing.py`), opt-in auto-fit, per-scene duration pinning, scene-capture cache hashing, and arc-aware prerequisite checks. The pure logic is unit-tested (`tests/`, `python -m unittest discover -s tests`).
 - **Node + Playwright — the camera.** Anything that drives a browser: capturing your real running app (`record-browser.mjs`), the HTML scenes (knowledge graph, end cards, mockups), the one-time login (`make-auth.mjs`), and the window-on-desk frame snapshot — plus a smooth fake cursor and an auto-trim for slow boot/auth splashes.
 - **ffmpeg — the editor.** Every pixel and audio operation: normalize, crossfade, speed, sidechain-duck the music under the voice, burn captions, composite the frame.
-- **Edge TTS** (free Microsoft neural voices, no API key) · **VHS / Charm** (terminal scenes) · **HTML/CSS** templates (end cards, graph, mockups) · **YAML** (the one config file).
+- **Edge TTS** (free Microsoft neural voices, no API key, default) · optional **paid** ElevenLabs voice/music (cost-gated) · **VHS / Charm** (terminal scenes) · optional **Remotion** (rendered React scenes, non-MIT licence) · **HTML/CSS** templates (end cards, graph, mockups) · **YAML** (the one config file).
 
 **Generated vs. authored**
 
-- *Generated automatically* (and cached): the voiceover, synced captions, music bed, scene captures, crossfades, timing fit, and the final mp4. The render is deterministic and **free** — no API keys, no per-video fees, no LLM calls.
+- *Generated automatically* (and cached): the voiceover, synced captions, music bed, scene captures, crossfades, timing fit, and the final mp4. The render is deterministic and **free by default** — no API keys, no per-video fees, no LLM calls, unless you opt into ElevenLabs voice/music (cost-gated, see *Cost-gate protocol* in SKILL.md).
 - *Authored by you (or an AI assistant)*: the `brand.yaml` — palette/fonts/logo, the **scene actions** (which elements to click, the multi-select steps), and the **voiceover script**. That's the creative work — and the only place LLM tokens are spent.
 
 ## Why I built this
@@ -163,7 +164,10 @@ White flashes, sync drift, audio truncation, fonts not loading → [references/t
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT — see [LICENSE](./LICENSE). The optional `remotion/` scene package is **NOT MIT**:
+Remotion is free for companies/individuals with 3 or fewer people, paid above that —
+see [remotion/README.md](./assets/remotion/README.md) and https://www.remotion.dev/license.
+It's opt-in and not copied by `init`.
 
 ## Author
 
