@@ -79,7 +79,7 @@ class ComputePlanAndKey(unittest.TestCase):
         self.assertEqual(caught.exception.code, 4)
         urlopen.assert_not_called()
 
-    def _approved_config(self):
+    def _approved_config(self, retry_rejected=False):
         cfg = {"music": {"mode": "elevenlabs"}, "subs": {"speedup": 1.0, "crossfade": 0.6}}
         plan_scenes = [{"id": "s1", "name": "s1", "type": "title"}]
         with open("config.json", "w", encoding="utf-8") as f:
@@ -88,35 +88,42 @@ class ComputePlanAndKey(unittest.TestCase):
             json.dump({"scenes": plan_scenes}, f)
         _, _, _, _, cache_key, total_s = self.mod.compute_plan_and_key(cfg, plan_scenes)
         with open(".spend-approved.json", "w", encoding="utf-8") as f:
-            json.dump({"code": "aaaaaaaa", "tts_keys": [],
-                       "music_max_seconds": int(total_s) + 10}, f)
+            json.dump({
+                "code": "aaaaaaaa", "tts_keys": [],
+                "music_max_seconds": int(total_s) + 10,
+                "voiceover_sha": self.mod.timing_util.voiceover_sha([]),
+                "music_cfg_sha": self.mod.music_plan.music_cfg_sha(cfg["music"]),
+                "retry_rejected": retry_rejected,
+            }, f)
         return cache_key
 
-    def test_a1_3_previously_rejected_track_refuses_without_retry_flag(self):
-        """A1 item 3: a track already quarantined for a silence dropout must
+    def test_a2_4_previously_rejected_track_refuses_without_record_retry_flag(self):
+        """A2 item 3/4: a track already quarantined for a silence dropout must
         never be silently re-billed on rerun -- exit 5, no network call,
-        unless the operator explicitly opts in with DEMO_RETRY_REJECTED=1."""
-        cache_key = self._approved_config()
+        unless the approval record's own retry_rejected is true (the env var
+        alone, without a matching record, is not enough)."""
+        cache_key = self._approved_config(retry_rejected=False)
         (self.cwd / ".env").write_text("ELEVENLABS_API_KEY=test-key\n", encoding="utf-8")
         rejected_dir = self.cwd / ".music-cache" / "elevenlabs" / "rejected"
         rejected_dir.mkdir(parents=True)
-        (rejected_dir / f"{cache_key}.mp3").write_bytes(b"rejected-audio")
+        (rejected_dir / f"{cache_key}-1.mp3").write_bytes(b"rejected-audio")
 
         with mock.patch("urllib.request.urlopen") as urlopen:
             with mock.patch.object(sys, "argv", ["make-music-elevenlabs.py", "--output", "out.mp3"]):
-                with mock.patch.dict(os.environ, {"DEMO_ROOT": str(self.cwd)}, clear=False):
-                    os.environ.pop("DEMO_RETRY_REJECTED", None)
+                with mock.patch.dict(
+                    os.environ, {"DEMO_ROOT": str(self.cwd), "DEMO_RETRY_REJECTED": "1"}, clear=False,
+                ):
                     with self.assertRaises(SystemExit) as caught:
                         self.mod.main()
         self.assertEqual(caught.exception.code, 5)
         urlopen.assert_not_called()
 
-    def test_a1_3_retry_flag_allows_a_new_request(self):
-        cache_key = self._approved_config()
+    def test_a2_4_record_retry_flag_allows_a_new_request_with_a_new_quarantine_name(self):
+        cache_key = self._approved_config(retry_rejected=True)
         (self.cwd / ".env").write_text("ELEVENLABS_API_KEY=test-key\n", encoding="utf-8")
         rejected_dir = self.cwd / ".music-cache" / "elevenlabs" / "rejected"
         rejected_dir.mkdir(parents=True)
-        (rejected_dir / f"{cache_key}.mp3").write_bytes(b"rejected-audio")
+        (rejected_dir / f"{cache_key}-1.mp3").write_bytes(b"rejected-audio")
 
         with mock.patch.object(
             self.mod.elevenlabs_api, "music_request",
@@ -124,14 +131,26 @@ class ComputePlanAndKey(unittest.TestCase):
         ) as music_request:
             with mock.patch.object(self.mod.music_plan, "find_dropouts", return_value=[]):
                 with mock.patch.object(sys, "argv", ["make-music-elevenlabs.py", "--output", "out.mp3"]):
-                    with mock.patch.dict(
-                        os.environ, {"DEMO_ROOT": str(self.cwd), "DEMO_RETRY_REJECTED": "1"},
-                        clear=False,
-                    ):
+                    with mock.patch.dict(os.environ, {"DEMO_ROOT": str(self.cwd)}, clear=False):
                         self.mod.main()
         music_request.assert_called_once()
         self.assertTrue((self.cwd / "out.mp3").exists())
         self.assertEqual((self.cwd / "out.mp3").read_bytes(), b"new-track")
+
+    def test_a2_2_music_cfg_sha_mismatch_refuses_with_no_network_call(self):
+        self._approved_config()
+        cfg = json.loads(Path("config.json").read_text(encoding="utf-8"))
+        cfg["music"]["prompt"] = "a different request entirely"
+        Path("config.json").write_text(json.dumps(cfg), encoding="utf-8")
+        (self.cwd / ".env").write_text("ELEVENLABS_API_KEY=test-key\n", encoding="utf-8")
+
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            with mock.patch.object(sys, "argv", ["make-music-elevenlabs.py", "--output", "out.mp3"]):
+                with mock.patch.dict(os.environ, {"DEMO_ROOT": str(self.cwd)}, clear=False):
+                    with self.assertRaises(SystemExit) as caught:
+                        self.mod.main()
+        self.assertEqual(caught.exception.code, 4)
+        urlopen.assert_not_called()
 
 
 if __name__ == "__main__":

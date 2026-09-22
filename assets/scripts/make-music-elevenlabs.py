@@ -9,19 +9,31 @@ could disagree the moment TTS+music were both uncached). It instead reads
 `.spend-approved.json` (written by `spend-gate.py check`) and checks the real
 track length against the approved BUDGET (`music_max_seconds`).
 
+Amendment A2: the approval only covers the EXACT music config it was computed
+against (`music_cfg_sha`, excluding `volume` -- a post-mix bed level, not part
+of the request). A retry of a previously rejected track is allowed ONLY when
+the approval record's own `retry_rejected` flag is true (set by spend-gate.py
+at check time) -- the DEMO_RETRY_REJECTED env var alone is never enough, so a
+build script can't silently re-bill a rejected track just by having the env
+var set without having re-run spend-gate. Each rejected attempt gets its own
+quarantine file (`<key>-<n>.mp3`), so retries never overwrite the evidence of
+a prior rejection.
+
   python make-music-elevenlabs.py --output music-src
 
 On success writes --output (mp3) and exits 0. Exits 3 if no API key is found
 (only reached once a real request is actually needed). Exits 4 if there is no
-approval record, or the real length exceeds its approved budget (no network
-call in either case). Exits 5 if a track was already rejected for a silence
-dropout and DEMO_RETRY_REJECTED != "1" (no fallback, no re-bill without an
-explicit opt-in), or if the newly-fetched track itself has a dropout (the file
-is quarantined; the build fails with no fallback -- an approved paid call
-producing a bad track must be visibly retried, never silently swapped for
-library/procedural).
+approval record, the record's music_cfg_sha doesn't match the live config, or
+the real length exceeds the approved budget (no network call in any case).
+Exits 5 if a track was already rejected for this exact request and the
+approval's retry_rejected flag is not true (no fallback, no re-bill without
+an explicit, re-approved opt-in), or if the newly-fetched track itself has a
+dropout (quarantined; the build fails with no fallback -- an approved paid
+call producing a bad track must be visibly retried, never silently swapped
+for library/procedural).
 """
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -96,6 +108,21 @@ def compute_plan_and_key(cfg, plan_scenes):
     return plan, model_id, output_format, seed, cache_key, total_s
 
 
+def _rejected_attempts(rejected_dir, cache_key):
+    """A2.4: every quarantined attempt for this exact request, `<key>*.mp3` --
+    not just `<key>.mp3` -- so a second rejection is detected too."""
+    return sorted(glob.glob(os.path.join(rejected_dir, f"{cache_key}*.mp3")))
+
+
+def _next_rejected_path(rejected_dir, cache_key):
+    n = len(_rejected_attempts(rejected_dir, cache_key)) + 1
+    candidate = os.path.join(rejected_dir, f"{cache_key}-{n}.mp3")
+    while os.path.exists(candidate):
+        n += 1
+        candidate = os.path.join(rejected_dir, f"{cache_key}-{n}.mp3")
+    return candidate
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--output", required=True)
@@ -117,29 +144,47 @@ def main():
         budget = (approved or {}).get("music_max_seconds")
         if not approved or budget is None:
             print(
-                "music.mode=elevenlabs has no approved spend record — run spend-gate "
+                "music.mode=elevenlabs has no approved spend record - run spend-gate "
                 "first (see SKILL.md Cost-gate protocol). No network call made.",
                 file=sys.stderr)
             sys.exit(4)
+
+        # A2.2: the approval only covers the EXACT music config it was
+        # computed against (volume excluded -- a post-mix level, not part of
+        # what gets requested).
+        live_music_sha = music_plan.music_cfg_sha(cfg.get("music", {}))
+        if approved.get("music_cfg_sha") != live_music_sha:
+            print(
+                "music config changed since the spend-gate approval (music_cfg_sha "
+                "mismatch) - run spend-gate again (see SKILL.md Cost-gate "
+                "protocol). No network call made.", file=sys.stderr)
+            sys.exit(4)
+
         if total_s > budget:
             print(
                 f"real music length ({total_s:.1f}s) exceeds the approved budget "
-                f"({budget}s) — scenes grew since the last spend-gate approval; "
+                f"({budget}s) - scenes grew since the last spend-gate approval; "
                 "re-run spend-gate to get a fresh approval. No network call made.",
                 file=sys.stderr)
             sys.exit(4)
 
-        rejected_path = os.path.join(cache_dir, "rejected", f"{cache_key}.mp3")
-        if os.path.exists(rejected_path) and os.environ.get("DEMO_RETRY_REJECTED") != "1":
+        rejected_dir = os.path.join(cache_dir, "rejected")
+        existing_rejected = _rejected_attempts(rejected_dir, cache_key)
+        # A2.3: DEMO_RETRY_REJECTED alone is never enough -- only the approval
+        # record's own retry_rejected (set by spend-gate.py check, at check
+        # time) authorizes retrying a request that was already rejected.
+        if existing_rejected and approved.get("retry_rejected") is not True:
+            names = ", ".join(os.path.basename(p) for p in existing_rejected)
             print(
-                f"a track for this exact request was already rejected (silence dropout): "
-                f"{rejected_path}. Not re-billing automatically — set DEMO_RETRY_REJECTED=1 "
-                "to retry, or change the request.", file=sys.stderr)
+                f"a track for this exact request was already rejected (silence "
+                f"dropout): {names}. Not re-billing automatically - set "
+                "DEMO_RETRY_REJECTED=1 and re-run spend-gate to retry, or change "
+                "the request.", file=sys.stderr)
             sys.exit(5)
 
         key = elevenlabs_api.load_key(root=root)
         if not key:
-            print("music.mode=elevenlabs but no API key found — set ELEVENLABS_API_KEY "
+            print("music.mode=elevenlabs but no API key found - set ELEVENLABS_API_KEY "
                   "or DEMO_ELEVENLABS_ENV_FILE (or <root>/.env)", file=sys.stderr)
             sys.exit(3)
 
@@ -155,14 +200,14 @@ def main():
             capture_output=True, text=True)
         dropouts = music_plan.find_dropouts(probe.stderr, total_s)
         if dropouts:
-            rejected_dir = os.path.join(cache_dir, "rejected")
             os.makedirs(rejected_dir, exist_ok=True)
+            rejected_path = _next_rejected_path(rejected_dir, cache_key)
             shutil.move(tmp_path, rejected_path)
             elevenlabs_api.ledger_append(root, {
                 "kind": "music", "cache_key": cache_key, "status": "rejected_dropout",
                 "character_cost": headers.get("xi-character-cost", "unknown")})
-            print(f"elevenlabs music has silence dropouts: {dropouts} — quarantined "
-                  f"to {rejected_path}. Build failed; no fallback is generated — "
+            print(f"elevenlabs music has silence dropouts: {dropouts} - quarantined "
+                  f"to {rejected_path}. Build failed; no fallback is generated - "
                   "retry the build.", file=sys.stderr)
             sys.exit(5)
 
