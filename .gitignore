@@ -22,6 +22,7 @@ node_modules/
 package.json
 package-lock.json
 pnpm-lock.yaml
+!assets/remotion/package.json
 
 # Python
 __pycache__/
