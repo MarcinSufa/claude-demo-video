@@ -1,5 +1,5 @@
 import { AbsoluteFill, continueRender, delayRender, interpolate, useCurrentFrame } from "remotion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { withBrandDefaults, type BrandProps } from "./brand";
 
 export type TitleCardProps = {
@@ -14,9 +14,23 @@ const FONT_LOAD_TIMEOUT_MS = 4000;
 
 function useGoogleFontsReady(url: string | null | undefined): void {
   const [handle] = useState(() => delayRender(`Loading Google Fonts: ${url ?? "(none)"}`));
+  // A2.5: continueRender must fire AT MOST ONCE for this handle. Without this
+  // guard, an effect re-run (e.g. `url` changes, or React StrictMode's
+  // double-invoke) starts a SECOND race while the first one's promise is
+  // still pending; when both eventually resolve, continueRender(handle)
+  // would be called twice for the same handle, which Remotion treats as an
+  // error. The ref (not state) means the guard itself never triggers a
+  // re-render or a further effect run.
+  const continuedRef = useRef(false);
+
   useEffect(() => {
-    if (!url) {
+    const continueOnce = () => {
+      if (continuedRef.current) return;
+      continuedRef.current = true;
       continueRender(handle);
+    };
+    if (!url) {
+      continueOnce();
       return;
     }
     const fontsReady =
@@ -24,11 +38,7 @@ function useGoogleFontsReady(url: string | null | undefined): void {
         ? document.fonts.ready
         : Promise.resolve();
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, FONT_LOAD_TIMEOUT_MS));
-    Promise.race([fontsReady, timeout]).then(() => continueRender(handle));
-    // no cleanup: continueRender must fire exactly once per delayRender handle,
-    // even if this effect re-runs (React StrictMode double-invoke) -- calling it
-    // twice for the same handle is a Remotion render error, so this intentionally
-    // does NOT re-delay/cancel on cleanup.
+    Promise.race([fontsReady, timeout]).then(continueOnce);
   }, [handle, url]);
 }
 
