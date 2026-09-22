@@ -22,11 +22,20 @@ import os
 import sys
 
 EXTS = (".py", ".sh", ".mjs")
+REMOTION_EXTS = (".ts", ".tsx", ".json", ".md")
 VERSION_FILE = "VERSION"
 
 
+def _remotion_dir_for(scripts_dir):
+    """assets/remotion is a SIBLING of assets/scripts (same layout after a
+    scaffolded project copies both under <project>/demo-video/)."""
+    return os.path.join(os.path.dirname(os.path.normpath(scripts_dir)), "remotion")
+
+
 def compute(scripts_dir):
-    """Deterministic sha256 over every runtime script's name + normalised content.
+    """Deterministic sha256 over every runtime script's name + normalised content,
+    PLUS (when present) every remotion/ source file — a stale Remotion template is
+    the same "mixed old+new, fails confusingly" hazard as a stale .py/.sh/.mjs.
 
     Line endings are collapsed to \\n so the fingerprint is identical whether the
     working tree checked out LF (Linux/CI) or CRLF (Windows). VERSION itself is
@@ -42,6 +51,22 @@ def compute(scripts_dir):
         h.update(b"\x00")
         h.update(data)
         h.update(b"\x00")
+
+    remotion_dir = _remotion_dir_for(scripts_dir)
+    if os.path.isdir(remotion_dir):
+        rel_paths = []
+        for base, _dirs, fnames in os.walk(remotion_dir):
+            for fn in fnames:
+                if fn.endswith(REMOTION_EXTS):
+                    full = os.path.join(base, fn)
+                    rel_paths.append(os.path.relpath(full, remotion_dir).replace(os.sep, "/"))
+        for rel in sorted(rel_paths):
+            with open(os.path.join(remotion_dir, rel), "rb") as fh:
+                data = fh.read().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            h.update(("remotion/" + rel).encode())
+            h.update(b"\x00")
+            h.update(data)
+            h.update(b"\x00")
     return h.hexdigest()
 
 

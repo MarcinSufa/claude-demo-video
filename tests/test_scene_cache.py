@@ -53,6 +53,40 @@ class DepFiles(unittest.TestCase):
         self.assertEqual(scene_cache.dep_files_for(entry), ["footage/a.mp4"])
 
 
+class DepFilesRemotion(unittest.TestCase):
+    def test_hashes_every_file_under_remotion_src_plus_package_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = os.path.join(d, "root")
+            remotion = os.path.join(root, "remotion")
+            src = os.path.join(remotion, "src")
+            nested = os.path.join(src, "nested")
+            os.makedirs(nested)
+            open(os.path.join(src, "index.ts"), "w").close()
+            open(os.path.join(nested, "scene.tsx"), "w").close()
+            open(os.path.join(remotion, "package.json"), "w").close()
+            open(os.path.join(remotion, "ignored.txt"), "w").close()
+            os.environ["DEMO_ROOT"] = root
+            try:
+                files = scene_cache.dep_files_for({"type": "remotion"})
+            finally:
+                del os.environ["DEMO_ROOT"]
+        normalized = sorted(os.path.normcase(os.path.abspath(p)) for p in files)
+        expected = sorted(os.path.normcase(os.path.abspath(p)) for p in (
+            os.path.join(src, "index.ts"),
+            os.path.join(nested, "scene.tsx"),
+            os.path.join(remotion, "package.json"),
+        ))
+        self.assertEqual(normalized, expected)
+
+    def test_missing_remotion_dir_returns_empty(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.environ["DEMO_ROOT"] = d
+            try:
+                self.assertEqual(scene_cache.dep_files_for({"type": "remotion"}), [])
+            finally:
+                del os.environ["DEMO_ROOT"]
+
+
 class IsFresh(unittest.TestCase):
     def test_false_when_mp4_missing(self):
         with tempfile.TemporaryDirectory() as d:

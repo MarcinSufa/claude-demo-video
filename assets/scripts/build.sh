@@ -219,6 +219,11 @@ if python prereqs.py needs-vhs scene-plan.json; then
   command -v vhs >/dev/null || command -v docker >/dev/null || {
     echo "Missing: VHS (winget install charmbracelet.vhs) or Docker — required for terminal/multi-agent scenes"; exit 1; }
 fi
+# Remotion (non-MIT, opt-in) is needed ONLY for `type: remotion` scenes.
+if python prereqs.py needs-remotion scene-plan.json; then
+  [ -d "$ROOT/remotion/node_modules/remotion" ] || {
+    echo "Missing: remotion/node_modules (run: cd remotion && pnpm install) — required for remotion scenes"; exit 1; }
+fi
 
 # ─── node_modules + backdrop into .build/ ───────────────────────────────
 [ -e node_modules ] || ln -s "$ROOT/node_modules" node_modules 2>/dev/null || cp -r "$ROOT/node_modules" node_modules

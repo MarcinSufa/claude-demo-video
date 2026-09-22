@@ -238,6 +238,32 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                 else:
                     sys.exit(f"before_after '{role}' needs a path string, 'source', or 'url'")
                 entry[role] = half
+        elif t == "remotion":
+            composition = sc.get("composition")
+            if not composition or not isinstance(composition, str):
+                sys.exit(f"remotion scene '{sid}': missing/invalid 'composition' (must be a non-empty string)")
+            duration = sc.get("duration")
+            if (duration is None or isinstance(duration, bool)
+                    or not isinstance(duration, (int, float)) or duration <= 0):
+                sys.exit(f"remotion scene '{sid}': missing/invalid 'duration' (must be a number > 0)")
+            duration = float(duration)
+            entry["mp4"] = f"videos/{sid}.mp4"
+            entry["composition"] = composition
+            entry["duration"] = duration
+            entry["remotion_props"] = {
+                "composition": composition,
+                "durationInFrames": round(duration * 30),
+                "fps": 30,
+                "width": 1920,
+                "height": 1080,
+                "brand": {
+                    "palette": ctx.get("palette", {}),
+                    "fonts": ctx.get("fonts", {}),
+                    "project_name": ctx.get("project_name"),
+                    "project_url": ctx.get("project_url"),
+                },
+                "props": sc.get("props", {}),
+            }
         elif t == "diorama":
             entry["mp4"] = f"videos/{sid}.mp4"
             entry["canvas"] = sc["canvas"]
@@ -304,7 +330,14 @@ def main():
            # palette change is part of the scene-cache fingerprint (busts a stale chrome clip).
            "chrome_style": {"bar_bg": subs.get("palette_end_card_bg", "#17171a"),
                             "rule": subs.get("palette_rule", "#2c2c32"),
-                            "fg": subs.get("palette_fg", "#f4efe3")}}
+                            "fg": subs.get("palette_fg", "#f4efe3")},
+           # remotion scene brand props — palette straight from config (not the flattened
+           # subs), fonts + project identity from subs (already resolved with defaults).
+           "palette": cfg.get("palette", {}),
+           "fonts": {"display": subs.get("font_display"), "body": subs.get("font_body"),
+                     "mono": subs.get("font_mono"), "tagline": subs.get("font_tagline")},
+           "project_name": subs.get("project_name"),
+           "project_url": subs.get("project_url")}
 
     # Resolution priority (most explicit wins):
     #   1. scenes.sequence  — exact ordered list, full scene-COUNT control

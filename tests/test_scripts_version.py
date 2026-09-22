@@ -31,17 +31,44 @@ class TestScriptsVersion(unittest.TestCase):
 
     def test_drift_is_detected(self):
         """A partial sync (one stale script) must fail --check."""
-        with tempfile.TemporaryDirectory() as d:
+        remotion_dir = os.path.join(os.path.dirname(SCRIPTS), "remotion")
+        with tempfile.TemporaryDirectory() as base:
+            d = os.path.join(base, "scripts")
+            os.makedirs(d)
             for f in os.listdir(SCRIPTS):
                 src = os.path.join(SCRIPTS, f)
                 if os.path.isfile(src):
                     shutil.copy(src, os.path.join(d, f))
+            if os.path.isdir(remotion_dir):
+                shutil.copytree(remotion_dir, os.path.join(base, "remotion"))
             # consistent copy -> check passes
             self.assertEqual(sf.main([sys.argv[0], "--check", d]), 0)
             # mutate one script (simulate a stale/partial sync) -> check fails
             with open(os.path.join(d, "build.sh"), "a", encoding="utf-8") as f:
                 f.write("\n# drift\n")
             self.assertEqual(sf.main([sys.argv[0], "--check", d]), 1)
+
+    def test_remotion_source_change_is_detected(self):
+        """A change under assets/remotion must bust the same fingerprint as a
+        change under assets/scripts (README.md, "extend scripts_fingerprint.py
+        so a change under assets/remotion is detected too")."""
+        remotion_dir = os.path.join(os.path.dirname(SCRIPTS), "remotion")
+        self.assertTrue(os.path.isdir(remotion_dir), "assets/remotion must exist")
+        with tempfile.TemporaryDirectory() as d:
+            scripts_copy = os.path.join(d, "scripts")
+            os.makedirs(scripts_copy)
+            for f in os.listdir(SCRIPTS):
+                src = os.path.join(SCRIPTS, f)
+                if os.path.isfile(src):
+                    shutil.copy(src, os.path.join(scripts_copy, f))
+            remotion_copy = os.path.join(d, "remotion")
+            shutil.copytree(remotion_dir, remotion_copy)
+
+            before = sf.compute(scripts_copy)
+            with open(os.path.join(remotion_copy, "src", "TitleCard.tsx"), "a", encoding="utf-8") as f:
+                f.write("\n// drift\n")
+            after = sf.compute(scripts_copy)
+        self.assertNotEqual(before, after)
 
     def test_normalises_line_endings(self):
         """CRLF vs LF must not change the fingerprint (cross-platform stability)."""

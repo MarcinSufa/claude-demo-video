@@ -26,5 +26,16 @@ class NeedsVhs(unittest.TestCase):
         self.assertFalse(prereqs.needs_vhs([]))
 
 
+class NeedsRemotion(unittest.TestCase):
+    def test_true_for_remotion_scene(self):
+        self.assertTrue(prereqs.needs_remotion(["browser_capture", "remotion", "endcards"]))
+
+    def test_false_without_remotion(self):
+        self.assertFalse(prereqs.needs_remotion(["terminal", "graph", "endcards"]))
+
+    def test_false_for_empty(self):
+        self.assertFalse(prereqs.needs_remotion([]))
+
+
 if __name__ == "__main__":
     unittest.main()

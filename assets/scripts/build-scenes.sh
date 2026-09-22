@@ -101,6 +101,17 @@ while IFS=$'\t' read -r id type mp4 extra <&3; do
       done
       python make-before-after.py ".scene-$id.json" "$mp4"
       rm -f ".scene-$id.json" ".scene-$id-before.json" ".scene-$id-after.json" ;;
+    remotion)
+      # remotion_props -> a generated JSON FILE (Windows quoting-safe), then render
+      # from $DEMO_ROOT/remotion. prereqs.py/build.sh already verified node_modules.
+      echo "$extra" | python -c "import json,sys;json.dump(json.load(sys.stdin)['remotion_props'],open('.remotion-$id.json','w'))"
+      REMOTION_DIR="${DEMO_ROOT:-..}/remotion"
+      COMPOSITION=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin)['composition'])")
+      ABS_MP4="$(pwd)/$mp4"
+      ABS_PROPS="$(pwd)/.remotion-$id.json"
+      mkdir -p "$(dirname "$mp4")"
+      (cd "$REMOTION_DIR" && pnpm exec remotion render src/index.ts "$COMPOSITION" "$ABS_MP4" "--props=$ABS_PROPS" --muted --codec=h264)
+      rm -f ".remotion-$id.json" ;;
     diorama)
       # N windows composited on a big canvas + an eased camera tour + the mascot
       # moving window-to-window (composited in canvas space by make-diorama, NOT
