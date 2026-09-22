@@ -12,10 +12,22 @@ Arcs:
 """
 import json
 import os
+import re
 import sys
 
 CONFIG = os.environ.get("DEMO_CONFIG", "config.json")
 OUT = "scene-plan.json"
+
+# apply-brand.py already builds the Google Fonts css2 URL (build_google_fonts_link,
+# with its FONT_SPECS axis table) and writes the rendered <link ...> tags into
+# subs.google_fonts_link. Reusing that computed URL here -- instead of
+# re-implementing font axis selection -- is what A1.8 asks for.
+_GOOGLE_FONTS_HREF_RE = re.compile(r'href="(https://fonts\.googleapis\.com/css2[^"]*)"')
+
+
+def _google_fonts_url(subs):
+    m = _GOOGLE_FONTS_HREF_RE.search(subs.get("google_fonts_link", "") or "")
+    return m.group(1) if m else None
 
 
 def should_warmup(url, explicit=None):
@@ -238,6 +250,32 @@ def custom_arc(custom_scenes, start_index=0, ctx=None):
                 else:
                     sys.exit(f"before_after '{role}' needs a path string, 'source', or 'url'")
                 entry[role] = half
+        elif t == "remotion":
+            composition = sc.get("composition")
+            if not composition or not isinstance(composition, str):
+                sys.exit(f"remotion scene '{sid}': missing/invalid 'composition' (must be a non-empty string)")
+            duration = sc.get("duration")
+            if (duration is None or isinstance(duration, bool)
+                    or not isinstance(duration, (int, float)) or duration <= 0):
+                sys.exit(f"remotion scene '{sid}': missing/invalid 'duration' (must be a number > 0)")
+            duration = float(duration)
+            entry["mp4"] = f"videos/{sid}.mp4"
+            entry["composition"] = composition
+            entry["duration"] = duration
+            entry["remotion_props"] = {
+                "composition": composition,
+                "durationInFrames": round(duration * 30),
+                "fps": 30,
+                "width": 1920,
+                "height": 1080,
+                "brand": {
+                    "palette": ctx.get("palette", {}),
+                    "fonts": ctx.get("fonts", {}),
+                    "project_name": ctx.get("project_name"),
+                    "project_url": ctx.get("project_url"),
+                },
+                "props": sc.get("props", {}),
+            }
         elif t == "diorama":
             entry["mp4"] = f"videos/{sid}.mp4"
             entry["canvas"] = sc["canvas"]
@@ -304,7 +342,18 @@ def main():
            # palette change is part of the scene-cache fingerprint (busts a stale chrome clip).
            "chrome_style": {"bar_bg": subs.get("palette_end_card_bg", "#17171a"),
                             "rule": subs.get("palette_rule", "#2c2c32"),
-                            "fg": subs.get("palette_fg", "#f4efe3")}}
+                            "fg": subs.get("palette_fg", "#f4efe3")},
+           # remotion scene brand props — palette straight from config (not the flattened
+           # subs), fonts + project identity from subs (already resolved with defaults).
+           "palette": cfg.get("palette", {}),
+           # google_fonts_url nests under "fonts" (not a sibling of it) so the
+           # Remotion brand props keep exactly the {palette, fonts,
+           # project_name, project_url} top-level shape.
+           "fonts": {"display": subs.get("font_display"), "body": subs.get("font_body"),
+                     "mono": subs.get("font_mono"), "tagline": subs.get("font_tagline"),
+                     "google_fonts_url": _google_fonts_url(subs)},
+           "project_name": subs.get("project_name"),
+           "project_url": subs.get("project_url")}
 
     # Resolution priority (most explicit wins):
     #   1. scenes.sequence  — exact ordered list, full scene-COUNT control

@@ -1,7 +1,7 @@
 {
   "name": "claude-demo-video",
   "metadata": {
-    "description": "Turn your app/UI into a ~50s feature film — capture your real running app (or a mockup, or a terminal), narrated with Edge TTS, synced karaoke captions, music bed, brand framing. Free tools; one brand.yaml."
+    "description": "Turn your app/UI into a ~50s feature film — capture your real running app (or a mockup, a terminal, or a Remotion scene), narrated with Edge TTS (free by default; optional paid ElevenLabs), synced karaoke captions, music bed (free by default; optional paid ElevenLabs Music), brand framing. One brand.yaml."
   },
   "owner": {
     "name": "Marcin Sufa",
@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "demo-video",
-      "description": "Produce a ~50s feature film of your app/UI. `/demo-video init` scaffolds into your project; edit brand.yaml (scenes + voiceover); `/demo-video build` produces final-framed.mp4. Capture your REAL running app (Playwright: click/type/scroll), HTML mockups for unbuilt features, screen recordings, or terminal scenes (VHS) — composed with Edge TTS voiceover, karaoke captions, ducked music, and brand framing. Output 1920×1080 H.264.",
+      "description": "Produce a ~50s feature film of your app/UI. `/demo-video init` scaffolds into your project; edit brand.yaml (scenes + voiceover); `/demo-video build` produces final-framed.mp4. Capture your REAL running app (Playwright: click/type/scroll), HTML mockups for unbuilt features, screen recordings, terminal scenes (VHS), or Remotion scenes — composed with Edge TTS voiceover (optional paid ElevenLabs), karaoke captions, ducked music (optional paid ElevenLabs Music), and brand framing. A mandatory cost-gate protocol shows and requires explicit approval before any paid call. Output 1920×1080 H.264.",
       "author": {"name": "Marcin Sufa"},
       "source": "./",
       "category": "productivity",

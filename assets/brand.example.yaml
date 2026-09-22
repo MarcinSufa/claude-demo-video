@@ -82,6 +82,16 @@ voice:
   #   ExoVault: "Exo Vault"        # force a space/break
   #   kubectl: "kube control"      # expand jargon
 
+  # provider: "elevenlabs"         # PAID, opt-in — higher fidelity. See the cost-gate
+  #                                 # protocol in SKILL.md before enabling: build --plan
+  #                                 # shows exactly what's billed and prints an approval
+  #                                 # code; nothing is billed without --approve-spend <code>.
+  # voice_id: "21m00Tcm4TlvDq8ikWAM" # ElevenLabs voice id, NOT an edge-tts name
+  # model_id: "eleven_multilingual_v2"
+  # `rate` above is edge-tts only (ignored for elevenlabs). NEVER put an API
+  # key here — set ELEVENLABS_API_KEY (or DEMO_ELEVENLABS_ENV_FILE / .env);
+  # apply-brand.py refuses to compile a brand.yaml containing one.
+
 # ─── AUTH (optional) ───────────────────────────────────────────────────
 # Log in ONCE; scenes with `auth: true` reuse the session (no login UI on camera).
 # Two modes:
@@ -113,6 +123,13 @@ music:
   #   If the fetch fails the build warns and uses the procedural preset instead.
   # procedural: an offline synthesized pad + arpeggio for the same moods.
   # file: your own track. A missing file fails the build.
+  # mode: "elevenlabs"               # PAID, opt-in — a composed original track built
+  #   from the real assembled scene spans. Same cost-gate protocol as voice above
+  #   (SKILL.md); nothing billed without an explicit --approve-spend <code>.
+  # styles: ["instrumental", "cinematic ambient electronic", "warm analog"]  # optional
+  # negative_styles: ["harsh"]       # optional; vocals/silence/drops out always added
+  # max_seconds: 60                  # only needed if any scene has no `duration:` -
+  #   spend-gate otherwise predicts the budget from scene durations automatically.
   # file: "assets/track.mp3"
   # none: voice only.
   # The bed always matches the final video length (looped or trimmed, faded out).

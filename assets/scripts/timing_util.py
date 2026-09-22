@@ -13,6 +13,21 @@ def voiceover_sha(voiceover):
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
+def calibration_key(voice_cfg):
+    """Cache key for vo-calibration.json, identifying a (provider, voice, rate/model)
+    combination. edge-tts keeps the original `f"{voice_id}|{rate}"` (unchanged, so
+    existing caches survive); elevenlabs has no `rate` (that's edge-only), so it
+    keys on voice_id + model_id instead."""
+    provider = voice_cfg.get("provider", "edge-tts")
+    if provider == "elevenlabs":
+        voice_id = voice_cfg.get("voice_id", "")
+        model_id = voice_cfg.get("model_id", "eleven_multilingual_v2")
+        return f"elevenlabs:{voice_id}:{model_id}"
+    voice_id = voice_cfg.get("voice_id", "en-US-AndrewNeural")
+    rate = voice_cfg.get("rate", "+0%")
+    return f"{voice_id}|{rate}"
+
+
 def speech_end_seconds(words_data):
     """End time (s) of the last spoken word, from vo-words.json data.
 
@@ -414,6 +429,42 @@ def scene_ownership(spans, crossfade=0.6):
             "warning": warning,
         })
     return windows
+
+
+def name_scene_spans(plan_scenes, spans):
+    """Attach a name to every span scene_spans() returns, WITHOUT truncating
+    (zip(names, spans) silently drops any span past len(plan_scenes), which is
+    wrong whenever a before_after/sequential scene contributes two spans for
+    one scene entry).
+
+    Walks scenes and spans in lockstep: a span pair whose first half is
+    marked `hard_right` and whose second half is marked `hard_left` (the
+    internal before_after cut scene_spans() inserts) came from ONE scene and
+    is named `<scene>-1`/`<scene>-2`; any other span is named after its own
+    scene. Any spans left over past the last scene (should not normally
+    happen) get a generic `scene-<n>` name rather than being dropped.
+
+    Returns a list of (name, start, end) tuples, one per span, same order.
+    """
+    named = []
+    si, pi = 0, 0
+    n_scenes, n_spans = len(plan_scenes or []), len(spans or [])
+    while pi < n_spans and si < n_scenes:
+        base = plan_scenes[si].get("name", plan_scenes[si].get("id", f"scene-{si + 1}"))
+        meta = spans[pi][2] if len(spans[pi]) > 2 else {}
+        next_meta = spans[pi + 1][2] if pi + 1 < n_spans and len(spans[pi + 1]) > 2 else {}
+        if meta.get("hard_right") and next_meta.get("hard_left"):
+            named.append((f"{base}-1", spans[pi][0], spans[pi][1]))
+            named.append((f"{base}-2", spans[pi + 1][0], spans[pi + 1][1]))
+            pi += 2
+        else:
+            named.append((base, spans[pi][0], spans[pi][1]))
+            pi += 1
+        si += 1
+    while pi < n_spans:
+        named.append((f"scene-{pi + 1}", spans[pi][0], spans[pi][1]))
+        pi += 1
+    return named
 
 
 def _owning_window(t, ownership):

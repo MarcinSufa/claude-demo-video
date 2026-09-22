@@ -1,17 +1,30 @@
-"""Generates voiceover MP3 + word-level timing JSON using Edge TTS streaming API.
+"""Generates voiceover MP3 + word-level timing JSON.
 
-Voice: en-US-AndrewNeural (Warm, Confident, Authentic — Anthropic-style)
+Providers (voice.provider in brand.yaml):
+  edge-tts    (default) — Microsoft Edge TTS, streaming, free, no API key.
+  elevenlabs  — ElevenLabs with-timestamps API, paid, per-line content-addressed
+                cache. Every uncached line must be pre-approved by spend-gate.py
+                (see .spend-approved.json / SKILL.md Cost-gate protocol) — this
+                script never computes or prints its own approval code.
+
 Outputs:
-  vo.mp3              — concatenated audio (~53s)
+  vo.mp3              — concatenated audio
   vo-words.json       — word timing for caption generation (per-word abs start + duration)
 """
 import asyncio
+import hashlib
 import json
 import os
+import re
 import subprocess
-import edge_tts
+import sys
 
+import elevenlabs_api
 import timing_util
+import vo_audio
+# `edge_tts` is imported lazily, only inside gen_segments_edge() — importing it
+# unconditionally here would require it even for provider=elevenlabs, which has
+# no use for it (A1.5).
 
 # ── Config-driven: read voice + voiceover from .build/config.json ──────
 CONFIG_PATH = os.environ.get("DEMO_CONFIG", ".build/config.json")
@@ -20,9 +33,8 @@ if not os.path.exists(CONFIG_PATH):
 with open(CONFIG_PATH, encoding="utf-8") as _f:
     _cfg = json.load(_f)
 
-import re
-
 _voice = _cfg.get("voice", {})
+PROVIDER = _voice.get("provider", "edge-tts")
 VOICE = _voice.get("voice_id", "en-US-AndrewNeural")
 RATE = _voice.get("rate", "+0%")
 LEADING_OFFSET_SEC = float(_voice.get("leading_silence", 0.2))
@@ -30,8 +42,8 @@ LEADING_OFFSET_SEC = float(_voice.get("leading_silence", 0.2))
 # Pronunciation map: respell brand terms for the TTS voice (e.g. a Polish voice
 # reads "Asistel" as "A-śi-stel"; respell to "Assystel" for English-ish sound).
 # Captions still show the ORIGINAL spelling — we reverse-map the spoken token back.
+# Shared by both providers.
 PRONOUNCE = {str(k): str(v) for k, v in (_voice.get("pronounce") or {}).items()}
-# reverse: spoken respelling (lowercased) -> original display form
 PRONOUNCE_REV = {v.lower(): k for k, v in PRONOUNCE.items()}
 
 
@@ -44,8 +56,7 @@ def apply_pronounce(text):
 
 
 def display_word(token):
-    """Map a spoken WordBoundary token back to its original spelling for captions."""
-    # strip trailing punctuation for matching, re-attach after
+    """Map a spoken token back to its original spelling for captions."""
     m = re.match(r"^(.*?)([.,!?:;]*)$", token)
     core, punct = m.group(1), m.group(2)
     if core.lower() in PRONOUNCE_REV:
@@ -63,8 +74,19 @@ WORK = ".vo"
 os.makedirs(WORK, exist_ok=True)
 
 
-async def gen_segments():
+def get_duration(path):
+    out = subprocess.check_output([
+        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", path,
+    ])
+    return float(out.decode().strip())
+
+
+# ── edge-tts provider ───────────────────────────────────────────────────
+async def gen_segments_edge():
     """Stream each segment, save audio + collect word boundaries."""
+    import edge_tts
+
     segments = []
     for i, (text, pause) in enumerate(SCRIPT):
         path = f"{WORK}/seg_{i:02d}.mp3"
@@ -86,44 +108,128 @@ async def gen_segments():
     return segments
 
 
-def get_duration(path):
-    out = subprocess.check_output([
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", path,
-    ])
-    return float(out.decode().strip())
+APPROVAL_RECORD = ".spend-approved.json"
 
 
-def silence(dur, cache={}):
-    key = round(dur, 2)
-    if key in cache: return cache[key]
-    p = f"{WORK}/sil_{int(dur * 1000)}.mp3"
-    subprocess.run([
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
-        "-t", str(dur), "-c:a", "libmp3lame", "-b:a", "128k", p,
-    ], check=True)
-    cache[key] = p
-    return p
+def _load_approval():
+    """spend-gate.py's .spend-approved.json, written on a passing `check` --
+    the single source of truth for what's approved (A1.2). Never computed or
+    regenerated here."""
+    if not os.path.exists(APPROVAL_RECORD):
+        return None
+    try:
+        with open(APPROVAL_RECORD, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+# elevenlabs provider ─────────────────────────────────────────────────
+def gen_segments_elevenlabs():
+    root = os.environ.get("DEMO_ROOT", "..")
+
+    if _voice.get("rate"):
+        print("WARNING: voice.rate is ignored for provider=elevenlabs (edge-tts only)")
+
+    cache_dir = os.path.join(root, ".tts-cache", "elevenlabs")
+    os.makedirs(cache_dir, exist_ok=True)
+
+    voice_cfg = {k: v for k, v in _voice.items()
+                 if k in ("voice_id", "model_id", "output_format", "language_code", "settings")}
+
+    planned = []
+    for text, pause in SCRIPT:
+        spoken = apply_pronounce(text)
+        cache_key = elevenlabs_api.tts_cache_key(voice_cfg, spoken)
+        audio_path = os.path.join(cache_dir, f"{cache_key}.mp3")
+        json_path = os.path.join(cache_dir, f"{cache_key}.json")
+        cached = os.path.exists(audio_path) and os.path.exists(json_path)
+        planned.append({"text": text, "pause": pause, "spoken": spoken,
+                         "cache_key": cache_key, "audio_path": audio_path,
+                         "json_path": json_path, "cached": cached})
+
+    # A1.2: check approval BEFORE the key -- an uncached line unapproved must
+    # exit 4 regardless of whether a key even exists (an unapproved request
+    # can never be attempted, so a missing key isn't the reason it's refused).
+    uncached = [p for p in planned if not p["cached"]]
+    if uncached:
+        approved = _load_approval()
+        # A2.2: an approval only covers the EXACT voiceover it was computed
+        # against -- a script edited after `spend-gate check` must never ride
+        # the old approval, even if the edit happens to keep some other line
+        # uncached-with-a-matching-key by coincidence.
+        if approved is not None:
+            live_sha = timing_util.voiceover_sha(_cfg.get("voiceover", []))
+            if approved.get("voiceover_sha") != live_sha:
+                print(
+                    "voiceover changed since the spend-gate approval (voiceover_sha "
+                    "mismatch) - run spend-gate again (see SKILL.md Cost-gate "
+                    "protocol). No network call made.", file=sys.stderr)
+                sys.exit(4)
+        approved_keys = set((approved or {}).get("tts_keys") or [])
+        missing = [p for p in uncached if p["cache_key"] not in approved_keys]
+        if missing:
+            print(
+                f"{len(missing)} uncached elevenlabs TTS line(s) are not in the approved "
+                "spend record - run spend-gate first (see SKILL.md Cost-gate protocol). "
+                "No network call made.", file=sys.stderr)
+            sys.exit(4)
+
+    key = None
+    if uncached:
+        key = elevenlabs_api.load_key(root=root)
+        if not key:
+            print(
+                "voice.provider=elevenlabs but no API key found - set ELEVENLABS_API_KEY "
+                "or DEMO_ELEVENLABS_ENV_FILE (or <root>/.env)", file=sys.stderr)
+            sys.exit(3)
+
+    segments = []
+    for p in planned:
+        if not p["cached"]:
+            audio, alignment, headers = elevenlabs_api.tts_request(key, voice_cfg, p["spoken"])
+            tmp_audio = p["audio_path"] + ".tmp"
+            with open(tmp_audio, "wb") as f:
+                f.write(audio)
+            os.replace(tmp_audio, p["audio_path"])
+            sidecar = {"alignment": alignment,
+                       "character_cost": elevenlabs_api.character_cost(headers)}
+            tmp_json = p["json_path"] + ".tmp"
+            with open(tmp_json, "w", encoding="utf-8") as f:
+                json.dump(sidecar, f)
+            os.replace(tmp_json, p["json_path"])
+            elevenlabs_api.ledger_append(root, {
+                "kind": "tts", "cache_key": p["cache_key"], "characters": len(p["spoken"]),
+                "status": "success", "character_cost": sidecar["character_cost"]})
+        with open(p["json_path"], encoding="utf-8") as f:
+            sidecar = json.load(f)
+        words_raw = elevenlabs_api.alignment_to_words(sidecar["alignment"])
+        words = [{"text": display_word(w["text"]), "offset_sec": w["offset_sec"],
+                  "duration_sec": w["duration_sec"]} for w in words_raw]
+        segments.append({"path": p["audio_path"], "text": p["text"],
+                          "pause_after": p["pause"], "words": words})
+        print(f"  seg: {len(words)} words {'(cached)' if p['cached'] else ''} - {p['text'][:55]}")
+    return segments
+
+
+def _voice_sha(voice_cfg):
+    canonical = json.dumps(voice_cfg, sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def main():
-    print(f"[1/3] Streaming {len(SCRIPT)} segments via Edge TTS ({VOICE})")
-    segments = asyncio.run(gen_segments())
+    print(f"[1/3] Generating {len(SCRIPT)} segments via {PROVIDER}"
+          + (f" ({VOICE})" if PROVIDER == "edge-tts" else ""))
+    if PROVIDER == "edge-tts":
+        segments = asyncio.run(gen_segments_edge())
+    elif PROVIDER == "elevenlabs":
+        segments = gen_segments_elevenlabs()
+    else:
+        sys.exit(f"Unknown voice.provider '{PROVIDER}' - use edge-tts or elevenlabs")
 
-    print(f"[2/3] Concatenating with pacing pauses")
-    list_path = f"{WORK}/concat.txt"
-    with open(list_path, "w") as f:
-        for seg in segments:
-            f.write(f"file '{os.path.abspath(seg['path'])}'\n")
-            if seg["pause_after"] > 0:
-                f.write(f"file '{os.path.abspath(silence(seg['pause_after']))}'\n")
-
-    subprocess.run([
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "concat", "-safe", "0", "-i", list_path,
-        "-c:a", "libmp3lame", "-b:a", "192k", "vo.mp3",
-    ], check=True)
+    print("[2/3] Concatenating with pacing pauses")
+    vo_audio.concat_with_pauses(
+        [(seg["path"], seg["pause_after"]) for seg in segments], "vo.mp3")
 
     print(f"[3/3] Computing absolute word timings (offset by {LEADING_OFFSET_SEC}s for mix delay)")
     cursor = LEADING_OFFSET_SEC
@@ -148,8 +254,10 @@ def main():
             seg_durs.append(seg_dur)
         cursor += seg_dur + seg["pause_after"]
 
+    voice_sha_cfg = {k: v for k, v in _voice.items() if k != "pronounce"}
     words_data = {"leading_offset": LEADING_OFFSET_SEC,
                   "script_sha": timing_util.voiceover_sha(_cfg.get("voiceover", [])),
+                  "voice_sha": _voice_sha(voice_sha_cfg),
                   "lines": all_lines}
     with open("vo-words.json", "w") as f:
         json.dump(words_data, f, indent=2)
@@ -159,9 +267,9 @@ def main():
     print(f"\nDone -> vo.mp3 ({vo_dur:.1f}s) + vo-words.json ({word_count} words, {len(all_lines)} lines)")
 
     # Self-calibration (P3-1 follow-up): this run just told us, for real, how
-    # fast this exact (voice_id, rate) actually speaks. Cache it keyed on the
-    # verbatim pair -- no rate-neutral extrapolation (edge-tts doesn't scale
-    # pauses and phonemes alike) -- so the NEXT `--plan` on this project uses a
+    # fast this exact voice actually speaks. Cache it keyed on
+    # timing_util.calibration_key() -- verbatim per (provider, voice, rate/model),
+    # no rate-neutral extrapolation -- so the NEXT `--plan` on this project uses a
     # measured rate instead of the uncalibrated 115 default.
     internal_pauses = [seg["pause_after"] for seg in segments[:-1]]
     measured = timing_util.measure_voice_rate(words_data, internal_pauses, seg_durs)
@@ -170,10 +278,11 @@ def main():
         cache = json.load(open(cache_path, encoding="utf-8")) if os.path.exists(cache_path) else {}
     except (OSError, ValueError):
         cache = {}
-    cache[f"{VOICE}|{RATE}"] = measured
+    cal_key = timing_util.calibration_key(_voice)
+    cache[cal_key] = measured
     with open(cache_path, "w") as f:
         json.dump(cache, f, indent=2)
-    print(f"  calibration: {VOICE} @ {RATE} measured ~{measured['wpm']:.0f} wpm "
+    print(f"  calibration: {cal_key} measured ~{measured['wpm']:.0f} wpm "
           f"(per-line overhead {measured['per_line_overhead']:.2f}s) -> {cache_path}")
     for line in timing_util.calibration_paste_lines(measured):
         print(line)

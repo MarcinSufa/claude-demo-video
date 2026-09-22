@@ -21,6 +21,52 @@ except ImportError:
     sys.exit("Missing pyyaml — run: pip install --user pyyaml")
 
 
+# Whole SEGMENTS only (split on snake_case/kebab-case/camelCase boundaries),
+# never a bare substring match -- "tokens" (plural) or "attempts" must not
+# false-positive on "token"/"api". "api"+"key" as ADJACENT segments (covers
+# api_key, apiKey, xi_api_key) is checked separately from the single-word set.
+_SECRET_SEGMENTS = {"secret", "token", "password", "passwd", "pwd", "apikey"}
+_SECRET_ADJACENT_PAIRS = {("api", "key")}
+
+
+def _key_segments(name):
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", str(name))
+    spaced = re.sub(r"[_\-]+", " ", spaced)
+    return [s.lower() for s in spaced.split() if s]
+
+
+def _looks_like_secret_key(name):
+    segs = _key_segments(name)
+    if any(seg in _SECRET_SEGMENTS for seg in segs):
+        return True
+    return any((segs[i], segs[i + 1]) in _SECRET_ADJACENT_PAIRS for i in range(len(segs) - 1))
+
+
+def refuse_secrets(node, path=""):
+    """Refuse any brand.yaml mapping key anywhere that looks like a secret
+    (api_key, apikey, secret, token, password, xi_api_key — matched as whole
+    segments, e.g. "tokens" or "attempts" do NOT match). Never prints the
+    value — only the dotted path — so a pasted-in key is never echoed to
+    stdout. `voice.pronounce` is exempt: its keys are arbitrary brand terms
+    to respell for TTS, not config, and scanning them produces false
+    refusals unrelated to secrets."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            dotted = f"{path}.{k}" if path else str(k)
+            if dotted == "voice.pronounce":
+                continue
+            if _looks_like_secret_key(k):
+                sys.exit(
+                    f"brand.yaml: refusing key '{dotted}' - looks like a secret "
+                    "(matches api_key/apikey/secret/token/password/xi_api_key). "
+                    "Use an environment variable (e.g. ELEVENLABS_API_KEY) instead "
+                    "of brand.yaml.")
+            refuse_secrets(v, dotted)
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            refuse_secrets(v, f"{path}[{i}]")
+
+
 def hex_to_ansi(hex_color):
     """#0a0705 -> '10;7;5' for \\033[38;2;R;G;Bm true-color ANSI."""
     h = hex_color.lstrip("#")
@@ -261,6 +307,8 @@ def main():
 
     with open(args.brand, encoding="utf-8") as f:
         brand = yaml.safe_load(f)
+
+    refuse_secrets(brand)
 
     subs, mem = build_substitutions(brand)
 

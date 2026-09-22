@@ -9,13 +9,17 @@ description: Use when the user wants to turn their app, UI, or product into a po
 
 A single `final-framed.mp4` (~50s, 1920×1080) that shows **how an application works**, in a polished product-film aesthetic:
 
-- **Your scenes, your order** — `scenes.sequence` composes any mix of: `browser_capture` (drive + record the REAL running app), `before_after` (a labeled BEFORE/AFTER comparison of two clips — bug→fix task demos), `html_mockup` (a designed screen for an unbuilt feature), `screen_recording` (an existing clip), `terminal` (CLI via VHS), plus built-in `graph` and `endcards`.
-- **AI voiceover** narrating the feature (Edge TTS, free, no API key, many languages/voices)
+- **Your scenes, your order** — `scenes.sequence` composes any mix of: `browser_capture` (drive + record the REAL running app), `before_after` (a labeled BEFORE/AFTER comparison of two clips — bug→fix task demos), `html_mockup` (a designed screen for an unbuilt feature), `screen_recording` (an existing clip), `terminal` (CLI via VHS), `remotion` (a rendered React scene, optional opt-in package), plus built-in `graph` and `endcards`.
+- **AI voiceover** narrating the feature (Edge TTS, free, no API key, many languages/voices —
+  or optional **paid** ElevenLabs for higher fidelity, see *Cost-gate protocol* below)
 - **Karaoke word-highlight captions** synced via WordBoundary events, readable on light AND dark UI
-- **Music bed**: CC0 library track per mood / procedural / your own file / none, fitted to the video, auto-ducked under the voice
+- **Music bed**: CC0 library track per mood / procedural / your own file / none / optional **paid**
+  ElevenLabs Music composed to the real scene spans — fitted to the video, auto-ducked under the voice
 - **Brand framing** — palette, fonts, logo, end cards; optional styled-window-on-desk composite
 
-Built entirely with **free tools** — ffmpeg, Playwright headless Chromium, VHS (Charm), Edge TTS. Zero paid services.
+Built entirely with **free tools by default** — ffmpeg, Playwright headless Chromium, VHS (Charm), Edge TTS.
+Two providers are optional and **paid**: ElevenLabs voice and ElevenLabs Music. Both are cost-gated — see
+*Cost-gate protocol* below — so nothing is ever billed without the user's explicit, informed approval.
 
 The bundled default (`memory-product-default`) is a 7-scene terminal narrative, but that's just one example arc — the common case is composing your own scenes around your real app's UI.
 
@@ -80,10 +84,12 @@ overruns. Override with `DEMO_ALLOW_TRUNCATE=1`. Catch it earlier with `/demo-vi
 | **ffmpeg** | `winget install Gyan.FFmpeg` / `brew install ffmpeg` | All video/audio operations |
 | **Python 3.10+** | system | VO + caption scripts |
 | **Node 18+ + pnpm** | system | Playwright recorder |
-| **edge-tts** | `pip install --user edge-tts` | Free Microsoft TTS, no API key |
+| **edge-tts** | `pip install --user edge-tts` | Free Microsoft TTS — **only if** `voice.provider` is `edge-tts` (the default); NOT needed for `elevenlabs` |
 | **playwright** | `cd demo-video && pnpm install && pnpm exec playwright install chromium` | Headless Chrome for HTML/graph/end-card capture + frame composite (always needed) |
 | **VHS** (Charm) | `winget install charmbracelet.vhs` / `brew install vhs` | Terminal scene recording — **only if** the arc has terminal/multi-agent scenes |
 | **Docker** (alt) | system | VHS via container (Windows fallback) |
+| **ElevenLabs API key** (optional, **paid**) | `ELEVENLABS_API_KEY` env var | Only if `voice.provider: elevenlabs` or `music.mode: elevenlabs` — see *Cost-gate protocol* |
+| **Remotion** (optional, opt-in) | `cd demo-video/remotion && pnpm install` (copied by `/demo-video remotion` or manually) | Only if the plan has a `type: remotion` scene — non-MIT licence |
 
 The skill verifies these before running `build` and asks the user to install missing ones.
 
@@ -145,7 +151,7 @@ See `references/brand-config.md` for the full schema and tuning guide.
 
 When invoked, follow this sequence:
 
-1. **Detect intent**. "init demo-video" → scaffold mode. "build" → pipeline mode. "plan" / "dry run" / "how long will it be" → plan mode (`bash scripts/build.sh --plan`). If neither, ask which.
+1. **Detect intent**. "init demo-video" → scaffold mode. "build" → pipeline mode. "plan" / "dry run" / "how long will it be" → plan mode (`bash scripts/build.sh --plan`). "remotion" / "add a remotion scene" → remotion mode (see 2b). If neither, ask which.
 
 2. **For `init`**:
    - `mkdir <project>/demo-video/`
@@ -158,17 +164,34 @@ When invoked, follow this sequence:
      up and installs into the wrong `node_modules`). Optionally set `name` to `<project>-demo-video`.
    - Copy `assets/mockup.example.html` → `mockups/example.html` (starter for `html_mockup`
      scenes — demo unbuilt features without touching the real codebase)
+   - Write `.gitignore` (create if missing, append missing lines if present) from
+     `assets/gitignore.example`: `.build/`, `.env`, `.tts-cache/`, `.music-cache/`,
+     `.spend-ledger.jsonl`, `remotion/node_modules/` — a local `.env` (ElevenLabs key) and
+     the per-line/per-track caches must never be committed
    - If the user wants the mascot: read the logo/brand colors, pick the best-fit roster character, call `mascot_brand.remap_palette` with brand colors, optionally edit accessory cells in the grid, write `mascot.json` next to `brand.yaml`.
    - Run a quick interactive interview (3-5 questions): product name, URL, voice gender/tone, what each scene should show
    - Fill in `brand.yaml` based on answers
    - Print: "Run `pnpm install && pnpm exec playwright install chromium`, edit `brand.yaml`, then `/demo-video plan` and `/demo-video build`."
 
+2b. **For `/demo-video remotion`** (opt-in, only when the user wants a `type: remotion`
+    scene): copy `assets/remotion` → `<project>/demo-video/remotion` (the package is
+    NOT copied by `init` — its `package.json` pins a non-MIT-licensed dependency, see
+    `remotion/README.md`), then tell the user to run `cd remotion && pnpm install`.
+
 3. **For `build`**:
+   - **First, if `voice.provider` or `music.mode` is `elevenlabs`: run the Cost-gate
+     protocol below.** Run `bash scripts/build.sh --plan`, show the printed `Billed
+     services` block to the user, and wait for their explicit yes. **A refusal message
+     (exit 4, "APPROVAL CODE: ...") is NOT approval** — it is the build saying no, and
+     the code it prints exists only so the user's later explicit approval can be pinned
+     to that exact request; the agent must never reuse it on its own. Only after the
+     user says yes, re-run with `--approve-spend <code>`.
    - Read `brand.yaml`
    - `build.sh` resolves the scene plan first, then gates prerequisites **arc-aware**:
-     ffmpeg/python/node/edge-tts/Playwright always; VHS/Docker only if the plan has a
-     terminal or multi-agent scene. Caching (`--no-cache`, `--only <id>`) reuses
-     unchanged scene clips between runs.
+     ffmpeg/python/node/Playwright always; edge-tts only if `voice.provider: edge-tts`
+     (the default); VHS/Docker only if the plan has a terminal or multi-agent scene;
+     the Remotion package only if the plan has a `remotion` scene. Caching
+     (`--no-cache`, `--only <id>`) reuses unchanged scene clips between runs.
    - If any missing → it prints the exact install command and STOPs
    - Template the scripts: substitute `{{project.name}}`, `{{palette.bg}}`, etc. into the bundled scripts/HTML/tape files
    - Start local http server: `python -m http.server 8765` (background)
@@ -307,6 +330,70 @@ The global mascot's corner overlay is **auto-suppressed** on diorama scenes (the
 scene composites its own mascot on the canvas), so a diorama and ordinary overlaid
 scenes coexist in one video without a double mascot.
 
+## Cost-gate protocol (mandatory — `voice.provider: elevenlabs` / `music.mode: elevenlabs`)
+
+Free by default (Edge TTS + library/procedural music). Both ElevenLabs
+providers are **paid, opt-in**, and gated so a build can never bill a call
+the operator hasn't seen and approved:
+
+1. Run `bash scripts/build.sh --plan` (or `--plan` via the pipeline). This
+   prints a `Billed services` block — uncached TTS lines/characters and/or
+   a music budget (seconds) — followed by an 8-hex **APPROVAL CODE**, with
+   **no network call**. `Billed services: none` means everything is cached
+   or nothing is configured as paid.
+2. **Show that block to the user and wait for an explicit yes.** The agent
+   must never decide spend is fine on its own, and must never generate or
+   guess the approval code — it only exists because `spend-gate.py` hashed
+   the exact uncached request set. **A refusal (exit 4, the printed
+   `APPROVAL CODE: ...`) is NOT approval** — it is the gate declining, and
+   the code is only ever valid once the user has seen the block and said
+   yes; reusing a printed code without that explicit yes defeats the whole
+   protocol.
+3. Only after explicit approval, re-run the build with
+   `bash scripts/build.sh --approve-spend <code>` (or `DEMO_APPROVE_SPEND=<code>`).
+   A build without it — or with a stale code from before a script/config
+   edit changed the request — refuses with exit 4 before any render.
+
+On success, `spend-gate.py check` writes `.build/.spend-approved.json` — the single
+approval record `make-vo.py`/`make-music-elevenlabs.py` consult; they never
+recompute or print their own approval code, so a later step can't drift out of
+sync with what the user actually approved. Music is approved as a **budget**
+(`music_max_seconds`, from every scene's `duration:` or an explicit
+`music.max_seconds`), not a specific track — the real track is checked against
+that ceiling when it's actually composed.
+
+**The approval record is single-use per request.** `check` deletes any
+existing `.spend-approved.json` FIRST, before doing anything else, so a
+leftover record from a previous build can never authorize a different one; it
+only writes a fresh record after passing. The record also carries
+`voiceover_sha` and `music_cfg_sha` — fingerprints of the exact voiceover
+script and music config (minus `volume`, a post-mix level) it was approved
+against — so editing either AFTER approval but before the real run refuses
+(exit 4) instead of silently billing something the user never saw. If
+`.spend-approved.json` exists but doesn't look like one `spend-gate.py`
+itself wrote (unreadable, or missing every expected field — e.g. left over
+from an interrupted write, or a foreign file), `check` removes it and refuses
+once (exit 4) so the operator sees it happened, then passes normally on the
+next `check`.
+
+A track that was already rejected for a silence dropout is never silently
+re-billed on rerun: it stays quarantined under
+`.music-cache/elevenlabs/rejected/<key>-<n>.mp3` (each attempt gets its own
+numbered file, so evidence of every rejection survives) and the build
+refuses (exit 5) naming the file. Retrying it is a TWO-step opt-in, not just
+setting an env var: `DEMO_RETRY_REJECTED=1` must be set when `spend-gate
+check` runs (which stamps `retry_rejected: true` into the approval record —
+`spend-gate estimate` also lists it as a billed "retry of a rejected music
+track" line so the user sees it before approving) — setting the env var only
+for the later `make-music-elevenlabs.py` step, without re-running
+`spend-gate check` first, has no effect and the refusal stands.
+
+Each line/track is cached (`.tts-cache/elevenlabs/`, `.music-cache/elevenlabs/`),
+so re-running an already-approved build never re-bills unchanged content.
+A `.spend-ledger.jsonl` line is appended per billed call (kind, cache key,
+characters/seconds, status, the `character-cost` response header if
+present) — never the API key or the spoken text.
+
 ## Pronouncing brand names
 
 TTS reads brand names phonetically in its own language — a Polish voice says
@@ -356,9 +443,14 @@ demo-video/
 │   ├── check-timing.py         ← P0-1 truncation gate (run by mix-final.sh)
 │   ├── dry-run-plan.py         ← P3-1 dry run (run by build.sh --plan)
 │   ├── normalize-clip.py       ← P0-3 pin a scene to exact duration
-│   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes
-│   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker gate
+│   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes (incl. remotion/src)
+│   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker/Remotion gate
 │   ├── autofit.py              ← P0-1 opt-in: fit speedup to voiceover length
+│   ├── elevenlabs_api.py       ← ElevenLabs TTS/music client (paid, cached, gated)
+│   ├── vo_audio.py             ← sample-rate-matched VO concat (both providers)
+│   ├── spend-gate.py           ← estimate/refuse billed calls, no network I/O
+│   ├── music_plan.py           ← spans -> ElevenLabs Music composition_plan
+│   ├── make-music-elevenlabs.py ← paid music bed (music.mode: elevenlabs)
 │   ├── mascot_data.py          ← parse mascot.json sprite grid
 │   ├── render-mascot.py        → render mascot sprite frames from mascot.json
 │   ├── resolve-mascot-timeline.py ← map scene timeline to mascot emotion segments
@@ -379,6 +471,9 @@ demo-video/
 │   └── tape/                   ← VHS scene tapes
 ├── assets/
 │   └── backdrop.jpg            ← Unsplash workspace photo (or user-supplied)
+├── remotion/                   ← optional, opt-in — only for `type: remotion` scenes
+│   ├── package.json            ← pinned remotion/@remotion/cli 4.0.527, React 19 (NOT MIT, see README)
+│   └── src/                    ← Root.tsx, TitleCard.tsx, brand.tsx
 └── videos/                     ← pipeline outputs
     └── final-framed.mp4        ← the deliverable
 ```

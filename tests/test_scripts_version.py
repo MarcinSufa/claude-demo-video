@@ -43,6 +43,28 @@ class TestScriptsVersion(unittest.TestCase):
                 f.write("\n# drift\n")
             self.assertEqual(sf.main([sys.argv[0], "--check", d]), 1)
 
+    def test_remotion_directory_is_not_fingerprinted(self):
+        """Reverted (review round 1 / A1.6): assets/remotion is a user-editable,
+        opt-in template, not a 1:1 vendored copy -- fingerprinting it would
+        misfire on every legitimate project customization."""
+        remotion_dir = os.path.join(os.path.dirname(SCRIPTS), "remotion")
+        self.assertTrue(os.path.isdir(remotion_dir), "assets/remotion must exist")
+        with tempfile.TemporaryDirectory() as d:
+            scripts_copy = os.path.join(d, "scripts")
+            os.makedirs(scripts_copy)
+            for f in os.listdir(SCRIPTS):
+                src = os.path.join(SCRIPTS, f)
+                if os.path.isfile(src):
+                    shutil.copy(src, os.path.join(scripts_copy, f))
+            remotion_copy = os.path.join(d, "remotion")
+            shutil.copytree(remotion_dir, remotion_copy)
+
+            before = sf.compute(scripts_copy)
+            with open(os.path.join(remotion_copy, "src", "TitleCard.tsx"), "a", encoding="utf-8") as f:
+                f.write("\n// drift\n")
+            after = sf.compute(scripts_copy)
+        self.assertEqual(before, after)
+
     def test_normalises_line_endings(self):
         """CRLF vs LF must not change the fingerprint (cross-platform stability)."""
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:

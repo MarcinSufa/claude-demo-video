@@ -10,6 +10,50 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "assets", "scri
 import timing_util  # noqa: E402
 
 
+class CalibrationKey(unittest.TestCase):
+    def test_edge_tts_unchanged_shape(self):
+        self.assertEqual(
+            timing_util.calibration_key({"voice_id": "en-US-AndrewNeural", "rate": "+0%"}),
+            "en-US-AndrewNeural|+0%")
+
+    def test_edge_tts_is_the_default_provider(self):
+        self.assertEqual(
+            timing_util.calibration_key({"voice_id": "v", "rate": "+5%"}),
+            timing_util.calibration_key({"voice_id": "v", "rate": "+5%", "provider": "edge-tts"}))
+
+    def test_elevenlabs_keys_on_voice_and_model_not_rate(self):
+        self.assertEqual(
+            timing_util.calibration_key({
+                "provider": "elevenlabs", "voice_id": "v1", "model_id": "eleven_v2", "rate": "+10%"}),
+            "elevenlabs:v1:eleven_v2")
+
+    def test_elevenlabs_default_model(self):
+        self.assertEqual(
+            timing_util.calibration_key({"provider": "elevenlabs", "voice_id": "v1"}),
+            "elevenlabs:v1:eleven_multilingual_v2")
+
+
+class NameSceneSpans(unittest.TestCase):
+    def test_no_truncation_for_a_composite_before_after_split(self):
+        scenes = [
+            {"id": "before-after", "type": "before_after", "layout": "sequential",
+             "cut_at": 4, "duration": 10},
+            {"id": "ending", "type": "title", "duration": 6},
+        ]
+        spans = timing_util.scene_spans([10.0, 6.0], speedup=1.0, crossfade=0.6, scene_plan=scenes)
+        self.assertEqual(len(spans), 3, "composite split must yield one extra span")
+        named = timing_util.name_scene_spans(scenes, spans)
+        self.assertEqual(len(named), len(spans), "every span must get a name, none dropped")
+        self.assertEqual([n[0] for n in named], ["before-after-1", "before-after-2", "ending"])
+        self.assertEqual(named[-1][2], spans[-1][1], "total must equal the last span's real end")
+
+    def test_plain_scenes_keep_their_own_names(self):
+        scenes = [{"id": "a"}, {"id": "b"}]
+        spans = timing_util.scene_spans([5.0, 5.0], speedup=1.0, crossfade=0.6, scene_plan=scenes)
+        named = timing_util.name_scene_spans(scenes, spans)
+        self.assertEqual([n[0] for n in named], ["a", "b"])
+
+
 class SpeechEndSeconds(unittest.TestCase):
     def test_returns_end_of_last_spoken_word(self):
         # vo-words.json shape from make-vo.py: top-level "lines", each with line_end

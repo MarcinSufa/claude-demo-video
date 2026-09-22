@@ -66,8 +66,6 @@ def resolve_wpm(cfg):
     Returns (wpm, leading_offset, per_line_overhead, source_label).
     """
     voice_cfg = cfg.get("voice", {})
-    voice_id = voice_cfg.get("voice_id", "en-US-AndrewNeural")
-    rate = voice_cfg.get("rate", "+0%")
 
     entry = None
     if os.path.exists(CALIBRATION_CACHE):
@@ -75,7 +73,7 @@ def resolve_wpm(cfg):
             cache = json.load(open(CALIBRATION_CACHE, encoding="utf-8"))
         except (OSError, ValueError):
             cache = {}
-        entry = cache.get(f"{voice_id}|{rate}")
+        entry = cache.get(timing_util.calibration_key(voice_cfg))
 
     if entry:
         cached_leading = _safe_float(entry.get("leading_offset"))

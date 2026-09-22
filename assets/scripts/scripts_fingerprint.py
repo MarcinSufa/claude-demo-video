@@ -24,6 +24,13 @@ import sys
 EXTS = (".py", ".sh", ".mjs")
 VERSION_FILE = "VERSION"
 
+# assets/remotion is deliberately NOT fingerprinted here (reverted, review
+# round 1 / A1.6): it's a user-editable template copied opt-in into a
+# scaffolded project (possibly already customized, with its own
+# node_modules), not a 1:1 vendored copy like assets/scripts -- there is no
+# "correct" committed hash to compare a user's edited copy against, so
+# --check would misfire on every legitimate customization.
+
 
 def compute(scripts_dir):
     """Deterministic sha256 over every runtime script's name + normalised content.

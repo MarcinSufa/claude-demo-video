@@ -84,6 +84,13 @@ case "$MODE" in
       fi
       echo "WARNING: could not fetch a '$STYLE' library track, falling back to procedural '$STYLE'"
     fi ;;
+  elevenlabs)
+    rm -f .music-none
+    python make-music-elevenlabs.py --output music-src
+    fit_bed music-src
+    rm -f music-src
+    echo "Done -> music.mp3 (${DUR}s, ElevenLabs composed track)"
+    exit 0 ;;
   procedural) rm -f .music-none ;;
   *) echo "WARNING: unknown music.mode '$MODE', using procedural"; rm -f .music-none ;;
 esac

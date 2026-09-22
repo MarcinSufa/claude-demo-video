@@ -67,6 +67,8 @@ while [ $# -gt 0 ]; do
     --no-cache|--force) NO_CACHE=1 ;;
     --only)            shift; ONLY="${1:-}" ;;
     --only=*)          ONLY="${1#--only=}" ;;
+    --approve-spend)   shift; export DEMO_APPROVE_SPEND="${1:-}" ;;
+    --approve-spend=*) export DEMO_APPROVE_SPEND="${1#--approve-spend=}" ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
   shift
@@ -94,7 +96,7 @@ fi
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
 python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py,diorama_layout.py,make-diorama.py,diorama_plan.py,fetch-music.py,glow_check.mjs,verify-final.py} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py,diorama_layout.py,make-diorama.py,diorama_plan.py,fetch-music.py,glow_check.mjs,verify-final.py,elevenlabs_api.py,vo_audio.py,spend-gate.py,music_plan.py,make-music-elevenlabs.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
@@ -110,6 +112,16 @@ export DEMO_SPEEDUP=$(python -c "import json;print(json.load(open('config.json')
 
 # Resolve the scene plan early (cheap) — drives both --plan and the arc-aware gate.
 python plan-scenes.py
+
+# ─── ElevenLabs spend gate — cost estimate/refusal, no network I/O ──────
+# --plan shows what WOULD be billed (estimate); a real build refuses any
+# uncached billed call before any render/network I/O (check) unless the
+# operator has approved the exact code shown, via --approve-spend/DEMO_APPROVE_SPEND.
+if [ "$PLAN_ONLY" = "1" ]; then
+  python spend-gate.py estimate
+else
+  python spend-gate.py check
+fi
 
 # ─── --plan: dry run (estimate VO + video length), then exit ────────────
 if [ "$PLAN_ONLY" = "1" ]; then
@@ -197,12 +209,20 @@ echo "  Estimated build time: ~${EST_LO}-${EST_HI} min ($N_SCENES scenes). Live 
 # ─── 0b. Arc-aware prerequisite gate (full build) ───────────────────────
 # Playwright is always needed (end-card / graph / terminal-on-desk composite use it).
 command -v node >/dev/null || { echo "Missing: node"; exit 1; }
-python -c "import edge_tts" 2>/dev/null || { echo "Missing: pip install --user edge-tts"; exit 1; }
+VOICE_PROVIDER=$(python -c "import json;print(json.load(open('config.json')).get('voice',{}).get('provider','edge-tts'))")
+if [ "$VOICE_PROVIDER" = "edge-tts" ]; then
+  python -c "import edge_tts" 2>/dev/null || { echo "Missing: pip install --user edge-tts"; exit 1; }
+fi
 [ -d "$ROOT/node_modules/playwright" ] || { echo "Missing: pnpm add playwright && pnpm exec playwright install chromium"; exit 1; }
 # VHS/Docker is needed ONLY for terminal / multi-agent scenes.
 if python prereqs.py needs-vhs scene-plan.json; then
   command -v vhs >/dev/null || command -v docker >/dev/null || {
     echo "Missing: VHS (winget install charmbracelet.vhs) or Docker — required for terminal/multi-agent scenes"; exit 1; }
+fi
+# Remotion (non-MIT, opt-in) is needed ONLY for `type: remotion` scenes.
+if python prereqs.py needs-remotion scene-plan.json; then
+  [ -d "$ROOT/remotion/node_modules/remotion" ] || {
+    echo "Missing: remotion/node_modules (run: cd remotion && pnpm install) — required for remotion scenes"; exit 1; }
 fi
 
 # ─── node_modules + backdrop into .build/ ───────────────────────────────
@@ -226,7 +246,8 @@ if ! curl -s -o /dev/null http://localhost:8765/; then
 fi
 
 # ─── 2-8. Pipeline ──────────────────────────────────────────────────────
-step 26 "Voiceover (Edge TTS)";     python make-vo.py
+VO_LABEL="Edge TTS"; [ "$VOICE_PROVIDER" = "elevenlabs" ] && VO_LABEL="ElevenLabs"
+step 26 "Voiceover ($VO_LABEL)";    python make-vo.py
 step 34 "Captions";                 python make-captions.py
 # P2-1: log in once if an auth block is configured (authed scenes reuse the session)
 if [ "$(python -c "import json;print(bool(json.load(open('config.json')).get('auth',{}).get('login_url')))")" = "True" ]; then

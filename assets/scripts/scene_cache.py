@@ -97,6 +97,21 @@ def dep_files_for(entry):
         # content) recomposes. url/capture windows carry their url/actions in the
         # entry JSON (already hashed), same as before_after capture halves.
         return [w["source"] for w in entry.get("windows", []) if w.get("source")]
+    if t == "remotion":
+        # Hash every file under remotion/src (+ package.json) so an edit to the
+        # Remotion sources busts the cache the same way a tape/html edit does —
+        # the entry JSON alone (composition name/props) can't see inside them.
+        root = os.environ.get("DEMO_ROOT", "..")
+        remotion_dir = os.path.join(root, "remotion")
+        src_dir = os.path.join(remotion_dir, "src")
+        deps = []
+        for base, _dirs, files in os.walk(src_dir):
+            for fn in files:
+                deps.append(os.path.join(base, fn))
+        package_json = os.path.join(remotion_dir, "package.json")
+        if os.path.exists(package_json):
+            deps.append(package_json)
+        return sorted(p for p in deps if os.path.isfile(p))
     return []
 
 

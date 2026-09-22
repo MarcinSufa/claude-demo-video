@@ -146,6 +146,28 @@ from `mockups/example.html` (scaffolded by `init`). The recorder injects your
 `palette.bg` before first paint, so a mockup that forgets an inline background won't
 record as a white flash.
 
+### `remotion` — a rendered React scene (optional, opt-in package)
+
+```yaml
+- type: remotion
+  composition: "TitleCard"    # id registered in remotion/src/Root.tsx
+  duration: 4                 # required, seconds
+  props: { title: "Ship it faster" }   # passed through to the composition
+```
+
+`composition` and `duration` are required — missing either fails the plan
+step naming the field. Renders through the (non-MIT, opt-in — see
+`remotion/README.md` for the licence) `assets/remotion` template: your
+`palette`, `typography`, and `project` from `brand.yaml` are passed in
+automatically as `brand` (palette/fonts/project_name/project_url), on top of
+your `props`. The Remotion package is **not** copied by `init` — copy
+`assets/remotion` to `<project>/demo-video/remotion` the first time you add
+a `remotion` scene, then `cd remotion && pnpm install`; `build.sh` checks
+for `remotion/node_modules/remotion` only when the plan actually has a
+`remotion` scene, and prints the exact install command if it's missing. A
+change to any file under `remotion/src` (or `remotion/package.json`) busts
+the scene cache, so editing your composition always re-renders it.
+
 ### Warming up real routes (`browser_capture`)
 
 Dev servers (Next etc.) compile a route on first hit, so a cold capture can catch a
