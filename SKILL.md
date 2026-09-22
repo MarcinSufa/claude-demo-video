@@ -9,10 +9,12 @@ description: Use when the user wants to turn their app, UI, or product into a po
 
 A single `final-framed.mp4` (~50s, 1920×1080) that shows **how an application works**, in a polished product-film aesthetic:
 
-- **Your scenes, your order** — `scenes.sequence` composes any mix of: `browser_capture` (drive + record the REAL running app), `before_after` (a labeled BEFORE/AFTER comparison of two clips — bug→fix task demos), `html_mockup` (a designed screen for an unbuilt feature), `screen_recording` (an existing clip), `terminal` (CLI via VHS), plus built-in `graph` and `endcards`.
-- **AI voiceover** narrating the feature (Edge TTS, free, no API key, many languages/voices)
+- **Your scenes, your order** — `scenes.sequence` composes any mix of: `browser_capture` (drive + record the REAL running app), `before_after` (a labeled BEFORE/AFTER comparison of two clips — bug→fix task demos), `html_mockup` (a designed screen for an unbuilt feature), `screen_recording` (an existing clip), `terminal` (CLI via VHS), `remotion` (a rendered React scene, optional opt-in package), plus built-in `graph` and `endcards`.
+- **AI voiceover** narrating the feature (Edge TTS, free, no API key, many languages/voices —
+  or optional **paid** ElevenLabs for higher fidelity, see *Cost-gate protocol* below)
 - **Karaoke word-highlight captions** synced via WordBoundary events, readable on light AND dark UI
-- **Music bed**: CC0 library track per mood / procedural / your own file / none, fitted to the video, auto-ducked under the voice
+- **Music bed**: CC0 library track per mood / procedural / your own file / none / optional **paid**
+  ElevenLabs Music composed to the real scene spans — fitted to the video, auto-ducked under the voice
 - **Brand framing** — palette, fonts, logo, end cards; optional styled-window-on-desk composite
 
 Built entirely with **free tools** — ffmpeg, Playwright headless Chromium, VHS (Charm), Edge TTS. Zero paid services.
@@ -158,6 +160,10 @@ When invoked, follow this sequence:
      up and installs into the wrong `node_modules`). Optionally set `name` to `<project>-demo-video`.
    - Copy `assets/mockup.example.html` → `mockups/example.html` (starter for `html_mockup`
      scenes — demo unbuilt features without touching the real codebase)
+   - Write `.gitignore` (create if missing, append missing lines if present) from
+     `assets/gitignore.example`: `.build/`, `.env`, `.tts-cache/`, `.music-cache/`,
+     `.spend-ledger.jsonl`, `remotion/node_modules/` — a local `.env` (ElevenLabs key) and
+     the per-line/per-track caches must never be committed
    - If the user wants the mascot: read the logo/brand colors, pick the best-fit roster character, call `mascot_brand.remap_palette` with brand colors, optionally edit accessory cells in the grid, write `mascot.json` next to `brand.yaml`.
    - Run a quick interactive interview (3-5 questions): product name, URL, voice gender/tone, what each scene should show
    - Fill in `brand.yaml` based on answers
@@ -307,6 +313,32 @@ The global mascot's corner overlay is **auto-suppressed** on diorama scenes (the
 scene composites its own mascot on the canvas), so a diorama and ordinary overlaid
 scenes coexist in one video without a double mascot.
 
+## Cost-gate protocol (mandatory — `voice.provider: elevenlabs` / `music.mode: elevenlabs`)
+
+Free by default (Edge TTS + library/procedural music). Both ElevenLabs
+providers are **paid, opt-in**, and gated so a build can never bill a call
+the operator hasn't seen and approved:
+
+1. Run `bash scripts/build.sh --plan` (or `--plan` via the pipeline). This
+   prints a `Billed services` block — uncached TTS lines/characters and/or
+   uncached music seconds — followed by an 8-hex **APPROVAL CODE**, with
+   **no network call**. `Billed services: none` means everything is cached
+   or nothing is configured as paid.
+2. **Show that block to the user and wait for an explicit yes.** The agent
+   must never decide spend is fine on its own, and must never generate or
+   guess the approval code — it only exists because `spend-gate.py` hashed
+   the exact uncached request set.
+3. Only after explicit approval, re-run the build with
+   `bash scripts/build.sh --approve-spend <code>` (or `DEMO_APPROVE_SPEND=<code>`).
+   A build without it — or with a stale code from before a script/config
+   edit changed the request — refuses with exit 4 before any render.
+
+Each line/track is cached (`.tts-cache/elevenlabs/`, `.music-cache/elevenlabs/`),
+so re-running an already-approved build never re-bills unchanged content.
+A `.spend-ledger.jsonl` line is appended per billed call (kind, cache key,
+characters/seconds, status, the `character-cost` response header if
+present) — never the API key or the spoken text.
+
 ## Pronouncing brand names
 
 TTS reads brand names phonetically in its own language — a Polish voice says
@@ -356,9 +388,14 @@ demo-video/
 │   ├── check-timing.py         ← P0-1 truncation gate (run by mix-final.sh)
 │   ├── dry-run-plan.py         ← P3-1 dry run (run by build.sh --plan)
 │   ├── normalize-clip.py       ← P0-3 pin a scene to exact duration
-│   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes
-│   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker gate
+│   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes (incl. remotion/src)
+│   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker/Remotion gate
 │   ├── autofit.py              ← P0-1 opt-in: fit speedup to voiceover length
+│   ├── elevenlabs_api.py       ← ElevenLabs TTS/music client (paid, cached, gated)
+│   ├── vo_audio.py             ← sample-rate-matched VO concat (both providers)
+│   ├── spend-gate.py           ← estimate/refuse billed calls, no network I/O
+│   ├── music_plan.py           ← spans -> ElevenLabs Music composition_plan
+│   ├── make-music-elevenlabs.py ← paid music bed (music.mode: elevenlabs)
 │   ├── mascot_data.py          ← parse mascot.json sprite grid
 │   ├── render-mascot.py        → render mascot sprite frames from mascot.json
 │   ├── resolve-mascot-timeline.py ← map scene timeline to mascot emotion segments
@@ -379,6 +416,9 @@ demo-video/
 │   └── tape/                   ← VHS scene tapes
 ├── assets/
 │   └── backdrop.jpg            ← Unsplash workspace photo (or user-supplied)
+├── remotion/                   ← optional, opt-in — only for `type: remotion` scenes
+│   ├── package.json            ← pinned remotion/@remotion/cli 4.0.527, React 19 (NOT MIT, see README)
+│   └── src/                    ← Root.tsx, TitleCard.tsx, brand.tsx
 └── videos/                     ← pipeline outputs
     └── final-framed.mp4        ← the deliverable
 ```

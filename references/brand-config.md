@@ -119,6 +119,34 @@ voice:
   wpm: 190                       # example rate: see make-vo.py output for your real measurement
 ```
 
+**`provider: "elevenlabs"`** (optional, **paid**) — higher-fidelity narration via the
+ElevenLabs `with-timestamps` API instead of the free Edge TTS default:
+
+```yaml
+voice:
+  provider: "elevenlabs"
+  voice_id: "21m00Tcm4TlvDq8ikWAM"   # ElevenLabs voice id, not an edge-tts name
+  model_id: "eleven_multilingual_v2" # optional, this is the default
+  # output_format / language_code / settings: optional, see elevenlabs_api.py
+```
+
+- **Key**: never in brand.yaml (refused, see below) — set `ELEVENLABS_API_KEY`,
+  or point `DEMO_ELEVENLABS_ENV_FILE` at a file containing
+  `ELEVENLABS_API_KEY=...`, or drop a `.env` next to `brand.yaml`. No default
+  path into another project.
+- **`rate` is edge-tts only** and is ignored (with a warning) for elevenlabs.
+- **Cost gate (mandatory workflow)**: every line is cached per (voice, model,
+  settings, format, language, text) under `.tts-cache/elevenlabs/`; an
+  unchanged line is never re-billed. Before the FIRST request for any
+  uncached line, the build refuses and prints the `Billed services` block
+  (uncached line/character counts) plus an 8-hex **approval code** — see
+  *Cost-gate protocol* in SKILL.md. `spend-gate.py` makes this refusal with
+  **no network call**.
+- **Never** put an API key in `brand.yaml` — `apply-brand.py` refuses any
+  key that matches `api[_-]?key|secret|token|password|xi[_-]?api`
+  (case-insensitive) anywhere in the file, naming the dotted path but never
+  the value.
+
 **`voice.wpm`** calibrates `--plan`'s narration-length estimate to how THIS
 voice actually speaks. The value shown above (190) is an illustration only.
 To measure the real rate: after your first full build, `make-vo.py` prints
@@ -165,6 +193,28 @@ music:
 WARNING and uses the `procedural` preset of the same mood, so an offline build
 still completes. `file` with a missing path fails the build. Whatever the mode,
 the bed is looped or trimmed to the final video length and faded out.
+
+**`mode: "elevenlabs"`** (optional, **paid**) — a composed original track from
+ElevenLabs Music, built from the REAL assembled scene spans (not an
+estimate) so sections line up with what actually plays:
+
+```yaml
+music:
+  mode: "elevenlabs"
+  styles: ["instrumental", "cinematic ambient electronic", "warm analog"]  # optional
+  negative_styles: ["harsh"]        # optional, "vocals"/"silence"/"drops out" always added
+  model_id: "music_v1"              # pinned default; only change if you know why
+  # seed: 42                        # optional, for reproducibility
+```
+
+Same cost gate as `voice.provider: elevenlabs` above — cached under
+`.music-cache/elevenlabs/` by a hash of the composition plan, refused
+without an approval code, no network call on refusal. After a successful
+(uncached) request, the build runs `ffmpeg silencedetect` on the result; a
+detected silence dropout quarantines the file to
+`.music-cache/elevenlabs/rejected/` and **fails the build with no
+fallback** — a paid call that produced a bad track is retried explicitly,
+never silently swapped for `procedural`/`library`.
 
 ### `verify`
 ```yaml

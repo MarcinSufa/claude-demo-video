@@ -148,6 +148,23 @@ cd demo-video
 pnpm exec playwright install chromium
 ```
 
+### Build refuses with "APPROVAL CODE" and exit 4
+
+**Cause:** `voice.provider: elevenlabs` or `music.mode: elevenlabs` has an uncached
+line/track and no matching `DEMO_APPROVE_SPEND` — this is the cost gate working as
+designed, not a bug. See *Cost-gate protocol* in SKILL.md.
+
+**Fix:** run `bash scripts/build.sh --plan`, read the `Billed services` block, get
+explicit approval, then re-run with `--approve-spend <the printed code>`. A stale
+code (from before a script/config edit changed the request) is refused again —
+re-run `--plan` to get the current one.
+
+### `remotion` scene: "Missing: remotion/node_modules"
+
+`assets/remotion` is opt-in — not copied by `init` (its package.json pins a
+NON-MIT-licensed dependency). Copy it once: `assets/remotion` →
+`<project>/demo-video/remotion`, then `cd remotion && pnpm install`.
+
 ### Final video larger than 10 MB
 
 Re-encode with higher CRF (lower quality):

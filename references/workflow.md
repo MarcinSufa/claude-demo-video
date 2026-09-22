@@ -22,15 +22,27 @@ brand.yaml
 
 ## Step-by-step
 
-### 1. `make-vo.py` — Voiceover via Edge TTS
+### 0. `spend-gate.py` — cost gate (only when a `voice`/`music` provider is paid)
 
-- Reads `brand.yaml` `voice` and `voiceover` sections
-- For each line, streams Edge TTS with `boundary="WordBoundary"` (critical — without this no word timing)
-- Saves per-segment mp3 in `.vo/seg_NN.mp3`
-- Concatenates with `pause_after` silence padding
+Runs right after `plan-scenes.py`, before anything else: `estimate` (plan mode)
+or `check` (build mode). No network I/O ever. See *Cost-gate protocol* in
+SKILL.md for the full agent workflow — this step is what makes it possible
+(cache-key reproduction shared with `make-vo.py`/`make-music-elevenlabs.py`).
+
+### 1. `make-vo.py` — Voiceover
+
+- Reads `brand.yaml` `voice` and `voiceover` sections; dispatches on
+  `voice.provider` (`edge-tts` default, `elevenlabs` paid/opt-in)
+- **edge-tts**: streams with `boundary="WordBoundary"` (critical — without this no word timing)
+- **elevenlabs**: per-line content-addressed cache under `.tts-cache/elevenlabs/`;
+  `elevenlabs_api.alignment_to_words` groups the `with-timestamps` character
+  alignment into the same word-timing shape edge-tts produces
+- Concatenates all segments (either provider) with `pause_after` silence
+  padding via `vo_audio.concat_with_pauses` (sample-rate-matched, so mixed
+  edge-tts/elevenlabs sample rates never desync)
 - Outputs:
   - `vo.mp3` — final concatenated audio
-  - `vo-words.json` — every word with absolute start time + duration
+  - `vo-words.json` — every word with absolute start time + duration (plus `voice_sha`)
 
 ### 2. `make-captions.py` — Karaoke ASS + standard SRT
 
@@ -55,6 +67,11 @@ brand.yaml
   into the per-user cache and verifies its sha256; on any failure it prints a WARNING and
   falls back to the procedural preset of the same mood
 - `mode: procedural`: per-mood chord table, detuned pad plus plucked arpeggio, ffmpeg only
+- `mode: elevenlabs` (paid, opt-in): `make-music-elevenlabs.py` builds sections from
+  the REAL assembled scene spans (`timing_util.scene_spans` over `.normalized/*.mp4`),
+  requests a composed track, runs `ffmpeg silencedetect` on the result, and
+  quarantines + fails the build (no fallback) on a detected dropout — see
+  *Cost-gate protocol* in SKILL.md
 
 ### 5. `mix-final.sh` — Audio mix
 

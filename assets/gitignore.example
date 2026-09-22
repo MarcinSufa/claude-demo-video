@@ -1,0 +1,6 @@
+.build/
+.env
+.tts-cache/
+.music-cache/
+.spend-ledger.jsonl
+remotion/node_modules/

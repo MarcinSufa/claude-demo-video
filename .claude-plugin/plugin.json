@@ -1,7 +1,7 @@
 {
   "name": "demo-video",
-  "version": "0.10.0",
-  "description": "Turn your app or UI into a ~50s feature film — record your real running app (or an HTML mockup, or a terminal), narrated with AI voiceover, synced karaoke captions, a music bed, and your brand's palette/fonts/end-cards. Free tools only; one brand.yaml drives it.",
+  "version": "0.11.0",
+  "description": "Turn your app or UI into a ~50s feature film — record your real running app (or an HTML mockup, a terminal, or a Remotion scene), narrated with AI voiceover (free Edge TTS by default; optional paid ElevenLabs), synced karaoke captions, a music bed (free by default; optional paid ElevenLabs Music), and your brand's palette/fonts/end-cards. One brand.yaml drives it.",
   "author": {
     "name": "Marcin Sufa",
     "email": "sufa.marcin@gmail.com"
@@ -22,6 +22,8 @@
     "playwright",
     "vhs",
     "marketing",
-    "launch-film"
+    "launch-film",
+    "elevenlabs",
+    "remotion"
   ]
 }
