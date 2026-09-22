@@ -12,10 +12,22 @@ Arcs:
 """
 import json
 import os
+import re
 import sys
 
 CONFIG = os.environ.get("DEMO_CONFIG", "config.json")
 OUT = "scene-plan.json"
+
+# apply-brand.py already builds the Google Fonts css2 URL (build_google_fonts_link,
+# with its FONT_SPECS axis table) and writes the rendered <link ...> tags into
+# subs.google_fonts_link. Reusing that computed URL here -- instead of
+# re-implementing font axis selection -- is what A1.8 asks for.
+_GOOGLE_FONTS_HREF_RE = re.compile(r'href="(https://fonts\.googleapis\.com/css2[^"]*)"')
+
+
+def _google_fonts_url(subs):
+    m = _GOOGLE_FONTS_HREF_RE.search(subs.get("google_fonts_link", "") or "")
+    return m.group(1) if m else None
 
 
 def should_warmup(url, explicit=None):
@@ -334,8 +346,12 @@ def main():
            # remotion scene brand props — palette straight from config (not the flattened
            # subs), fonts + project identity from subs (already resolved with defaults).
            "palette": cfg.get("palette", {}),
+           # google_fonts_url nests under "fonts" (not a sibling of it) so the
+           # Remotion brand props keep exactly the {palette, fonts,
+           # project_name, project_url} top-level shape.
            "fonts": {"display": subs.get("font_display"), "body": subs.get("font_body"),
-                     "mono": subs.get("font_mono"), "tagline": subs.get("font_tagline")},
+                     "mono": subs.get("font_mono"), "tagline": subs.get("font_tagline"),
+                     "google_fonts_url": _google_fonts_url(subs)},
            "project_name": subs.get("project_name"),
            "project_url": subs.get("project_url")}
 

@@ -5,6 +5,11 @@ export type BrandFonts = {
   body?: string;
   mono?: string;
   tagline?: string;
+  /** apply-brand.py's own Google Fonts css2 link builder (FONT_SPECS axis
+   * table), reused as-is -- plan-scenes.py extracts the URL it already
+   * rendered into subs.google_fonts_link rather than re-picking font axes
+   * here. null/undefined when brand.yaml has no typography configured. */
+  google_fonts_url?: string | null;
 };
 
 export type BrandProps = {
@@ -18,7 +23,10 @@ export type BrandProps = {
  * standalone (e.g. `remotion render` run by hand without --props). */
 export const defaultBrand: BrandProps = {
   palette: { bg: "#0a0705", fg: "#dcd7cf", accent: "#dbaf71" },
-  fonts: { display: "Newsreader", body: "Geist", mono: "JetBrains Mono", tagline: "Instrument Serif" },
+  fonts: {
+    display: "Newsreader", body: "Geist", mono: "JetBrains Mono", tagline: "Instrument Serif",
+    google_fonts_url: null,
+  },
   project_name: "MyProduct",
   project_url: "myproduct.com",
 };

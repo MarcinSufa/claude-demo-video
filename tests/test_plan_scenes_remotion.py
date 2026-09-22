@@ -12,7 +12,7 @@ from pathlib import Path
 SCRIPT = str((Path(__file__).resolve().parent.parent / "assets" / "scripts" / "plan-scenes.py"))
 
 
-def _run(scenes):
+def _run(scenes, extra_subs=None):
     config = {
         "scenes": {"sequence": scenes},
         "subs": {
@@ -20,6 +20,7 @@ def _run(scenes):
             "font_display": "Disp", "font_body": "Body", "font_mono": "Mono", "font_tagline": "Tag",
             "palette_bg": "#000000", "palette_end_card_bg": "#111111",
             "palette_rule": "#222222", "palette_fg": "#eeeeee",
+            **(extra_subs or {}),
         },
         "palette": {"bg": "#000000", "accent": "#ff0000"},
         "project": {"name": "Demo", "url": "https://demo.test"},
@@ -58,6 +59,45 @@ class RemotionScene(unittest.TestCase):
         self.assertEqual(props["brand"]["project_name"], "Demo")
         self.assertEqual(props["brand"]["project_url"], "https://demo.test")
         self.assertEqual(entry["mascot_plan"].get("emotion", "idle"), "idle")
+
+    def test_brand_props_keep_the_exact_top_level_shape_and_carry_fonts_url(self):
+        # A1.8: reuse apply-brand's computed link (subs.google_fonts_link), not
+        # a re-implementation of its FONT_SPECS axis table. It nests under
+        # brand.fonts (not a brand-level sibling) so brand keeps exactly
+        # {palette, fonts, project_name, project_url} (spec §plan-scenes.py).
+        result, plan = _run([
+            {"type": "remotion", "composition": "Opening", "duration": 3},
+            {"type": "browser_capture", "url": "https://x.test"},
+        ])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        entry = next(s for s in plan["scenes"] if s["type"] == "remotion")
+        brand = entry["remotion_props"]["brand"]
+        self.assertEqual(set(brand), {"palette", "fonts", "project_name", "project_url"})
+        self.assertIsNone(
+            brand["fonts"]["google_fonts_url"],
+            "no subs.google_fonts_link in the fixture config -> None, not a crash",
+        )
+
+    def test_google_fonts_url_extracted_from_subs_link(self):
+        result, plan = _run(
+            [
+                {"type": "remotion", "composition": "Opening", "duration": 3},
+                {"type": "browser_capture", "url": "https://x.test"},
+            ],
+            extra_subs={
+                "google_fonts_link": (
+                    '<link rel="preconnect" href="https://fonts.googleapis.com">'
+                    '<link href="https://fonts.googleapis.com/css2?family=Geist&display=swap" '
+                    'rel="stylesheet">'
+                )
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        entry = next(s for s in plan["scenes"] if s["type"] == "remotion")
+        self.assertEqual(
+            entry["remotion_props"]["brand"]["fonts"]["google_fonts_url"],
+            "https://fonts.googleapis.com/css2?family=Geist&display=swap",
+        )
 
     def test_missing_composition_names_the_field(self):
         result, _ = _run([
