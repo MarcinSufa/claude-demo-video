@@ -2,18 +2,24 @@
 
 Spans come from the REAL assembled scenes (.normalized/s<i>.mp4, written by
 assemble.sh) so sections line up with what actually plays, not an estimate.
-Defence in depth: spend-gate.py already refuses an unapproved build before
-assemble.sh runs, but an uncached request here re-checks the same approval
-code before making any network call, in case the ledger/cache changed
-between the gate check and this step.
+
+Amendment A1: this script never computes or prints its own approval code (three
+independent formulas for "the same" code -- spend-gate, make-vo, make-music --
+could disagree the moment TTS+music were both uncached). It instead reads
+`.spend-approved.json` (written by `spend-gate.py check`) and checks the real
+track length against the approved BUDGET (`music_max_seconds`).
 
   python make-music-elevenlabs.py --output music-src
 
-On success writes --output (mp3) and exits 0. Exits 4 if the request is
-uncached and unapproved (no network call). Exits 5 if the returned track has
-a silence dropout -- the file is quarantined to .music-cache/elevenlabs/rejected/
-and the build fails with no fallback (an approved paid call producing a bad
-track must be visibly retried, never silently swapped for library/procedural).
+On success writes --output (mp3) and exits 0. Exits 3 if no API key is found
+(only reached once a real request is actually needed). Exits 4 if there is no
+approval record, or the real length exceeds its approved budget (no network
+call in either case). Exits 5 if a track was already rejected for a silence
+dropout and DEMO_RETRY_REJECTED != "1" (no fallback, no re-bill without an
+explicit opt-in), or if the newly-fetched track itself has a dropout (the file
+is quarantined; the build fails with no fallback -- an approved paid call
+producing a bad track must be visibly retried, never silently swapped for
+library/procedural).
 """
 import argparse
 import hashlib
@@ -29,6 +35,17 @@ import timing_util
 
 CONFIG = os.environ.get("DEMO_CONFIG", "config.json")
 PLAN = os.environ.get("DEMO_PLAN", "scene-plan.json")
+APPROVAL_RECORD = ".spend-approved.json"
+
+
+def _load_approval():
+    if not os.path.exists(APPROVAL_RECORD):
+        return None
+    try:
+        with open(APPROVAL_RECORD, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 def _scene_durations(plan_scenes):
@@ -56,15 +73,19 @@ def real_spans(cfg, plan_scenes):
     # (see timing_util.scene_spans).
     spans = timing_util.scene_spans(durations, speedup=1.0, crossfade=crossfade,
                                      scene_plan=plan_scenes, composite_speedup=speedup)
-    names = [s.get("name", s.get("id")) for s in plan_scenes]
-    return [(name, sp[0], sp[1]) for name, sp in zip(names, spans)]
+    return timing_util.name_scene_spans(plan_scenes, spans)
 
 
 def compute_plan_and_key(cfg, plan_scenes):
     music = cfg.get("music", {})
     spans = real_spans(cfg, plan_scenes)
     total_s = spans[-1][2] if spans else 0.0
-    sections = music_plan.sections_from_spans(spans, total_s)
+    try:
+        sections = music_plan.sections_from_spans(spans, total_s)
+    except ValueError as e:
+        sys.exit(f"make-music-elevenlabs: {e} (real assembled length {total_s:.1f}s "
+                  "is too short to compose a track for -- add scenes or raise "
+                  "scene durations)")
     plan = music_plan.composition_plan(music, sections)
     model_id = music.get("model_id", "music_v1")
     output_format = music.get("output_format", "mp3_44100_192")
@@ -86,24 +107,41 @@ def main():
         plan_scenes = json.load(f).get("scenes", [])
     root = os.environ.get("DEMO_ROOT", "..")
 
-    key = elevenlabs_api.load_key(root=root)
-    if not key:
-        print("music.mode=elevenlabs but no API key found — set ELEVENLABS_API_KEY "
-              "or DEMO_ELEVENLABS_ENV_FILE (or <root>/.env)", file=sys.stderr)
-        sys.exit(3)
-
     plan, model_id, output_format, seed, cache_key, total_s = compute_plan_and_key(cfg, plan_scenes)
     cache_dir = os.path.join(root, ".music-cache", "elevenlabs")
     os.makedirs(cache_dir, exist_ok=True)
     cached_path = os.path.join(cache_dir, f"{cache_key}.mp3")
 
     if not os.path.exists(cached_path):
-        code = elevenlabs_api.approval_code([], cache_key)
-        if os.environ.get("DEMO_APPROVE_SPEND") != code:
-            print(f"elevenlabs music would bill ~{total_s:.1f}s of audio — "
-                  f"re-run with DEMO_APPROVE_SPEND={code} after review. "
-                  "No network call made.", file=sys.stderr)
+        approved = _load_approval()
+        budget = (approved or {}).get("music_max_seconds")
+        if not approved or budget is None:
+            print(
+                "music.mode=elevenlabs has no approved spend record — run spend-gate "
+                "first (see SKILL.md Cost-gate protocol). No network call made.",
+                file=sys.stderr)
             sys.exit(4)
+        if total_s > budget:
+            print(
+                f"real music length ({total_s:.1f}s) exceeds the approved budget "
+                f"({budget}s) — scenes grew since the last spend-gate approval; "
+                "re-run spend-gate to get a fresh approval. No network call made.",
+                file=sys.stderr)
+            sys.exit(4)
+
+        rejected_path = os.path.join(cache_dir, "rejected", f"{cache_key}.mp3")
+        if os.path.exists(rejected_path) and os.environ.get("DEMO_RETRY_REJECTED") != "1":
+            print(
+                f"a track for this exact request was already rejected (silence dropout): "
+                f"{rejected_path}. Not re-billing automatically — set DEMO_RETRY_REJECTED=1 "
+                "to retry, or change the request.", file=sys.stderr)
+            sys.exit(5)
+
+        key = elevenlabs_api.load_key(root=root)
+        if not key:
+            print("music.mode=elevenlabs but no API key found — set ELEVENLABS_API_KEY "
+                  "or DEMO_ELEVENLABS_ENV_FILE (or <root>/.env)", file=sys.stderr)
+            sys.exit(3)
 
         audio, headers = elevenlabs_api.music_request(
             key, plan, model_id=model_id, output_format=output_format, seed=seed)
@@ -119,7 +157,6 @@ def main():
         if dropouts:
             rejected_dir = os.path.join(cache_dir, "rejected")
             os.makedirs(rejected_dir, exist_ok=True)
-            rejected_path = os.path.join(rejected_dir, f"{cache_key}.mp3")
             shutil.move(tmp_path, rejected_path)
             elevenlabs_api.ledger_append(root, {
                 "kind": "music", "cache_key": cache_key, "status": "rejected_dropout",

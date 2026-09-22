@@ -1,14 +1,23 @@
 """spend-gate.py -- estimate/refuse billed ElevenLabs calls before any network I/O.
 
-Run from `.build` (build.sh copies elevenlabs_api.py, music_plan.py, timing_util.py
-alongside). Reads config.json + scene-plan.json + the $DEMO_ROOT caches that
-make-vo.py / make-music-elevenlabs.py would consult, and reproduces their exact
-cache keys -- this script itself never performs network I/O.
+Run from `.build` (build.sh copies elevenlabs_api.py, timing_util.py alongside).
+Reads config.json + scene-plan.json + the $DEMO_ROOT caches that make-vo.py
+would consult, and reproduces make-vo's exact TTS cache keys -- this script
+itself never performs network I/O.
 
   python spend-gate.py estimate   # print the Billed services block + approval code, exit 0
   python spend-gate.py check      # exit 0 if nothing uncached (or approved), else print + exit 4
+
+Amendment A1: `check`, on success, writes `.spend-approved.json` (in the CURRENT
+directory -- `.build`) -- the single approval record make-vo.py /
+make-music-elevenlabs.py consult. They never recompute or print their own
+approval code: three independent formulas for the same code (spend-gate,
+make-vo, make-music) could disagree the moment TTS+music were both uncached,
+deadlocking approval. Music is approved as a BUDGET (`music_max_seconds`),
+never a specific composition-plan hash -- the real plan can only be built once
+the video is actually assembled, and an unchanged budget must not force
+re-approval on every rebuild.
 """
-import hashlib
 import json
 import math
 import os
@@ -20,6 +29,7 @@ import timing_util
 
 CONFIG = os.environ.get("DEMO_CONFIG", "config.json")
 PLAN = os.environ.get("DEMO_PLAN", "scene-plan.json")
+APPROVAL_RECORD = ".spend-approved.json"
 
 
 def _apply_pronounce(text, pronounce):
@@ -63,68 +73,52 @@ def _predicted_spans(plan_scenes, cfg):
     if not durations or any(d is None for d in durations):
         return None
     spans = timing_util.scene_spans([float(d) for d in durations], speedup, crossfade, plan_scenes)
-    names = [s.get("name", s.get("id")) for s in plan_scenes]
-    return [(name, sp[0], sp[1]) for name, sp in zip(names, spans)]
+    return timing_util.name_scene_spans(plan_scenes, spans)
 
 
-def music_estimate(cfg, root, plan_scenes):
-    music = cfg.get("music", {})
-    if music.get("mode") != "elevenlabs":
-        return None
-
-    cache_dir = os.path.join(root, ".music-cache", "elevenlabs")
-
-    spans = _predicted_spans(plan_scenes, cfg)
-    if spans is None:
-        total = sum(float(s.get("duration") or 0) for s in plan_scenes)
-        cap_s = int(math.ceil(max(total, 1) / 5.0) * 5)
-        return {"pinned": False, "cap_seconds": cap_s, "key": f"cap:{cap_s}s", "cached": False}
-
-    total_s = spans[-1][2]
-    try:
-        import music_plan
-    except ImportError:
-        return {"pinned": True, "seconds": round(total_s, 1), "key": None, "cached": False}
-
-    sections = music_plan.sections_from_spans(spans, total_s)
-    plan = music_plan.composition_plan(music, sections)
-    model_id = music.get("model_id", "music_v1")
-    output_format = music.get("output_format", "mp3_44100_192")
-    seed = music.get("seed")
-    key_src = json.dumps({"plan": plan, "model_id": model_id,
-                           "output_format": output_format, "seed": seed}, sort_keys=True)
-    key = hashlib.sha256(key_src.encode("utf-8")).hexdigest()
-    cached = os.path.exists(os.path.join(cache_dir, f"{key}.mp3"))
-    return {"pinned": True, "seconds": round(total_s, 1), "key": key, "cached": cached}
+def music_budget_seconds(plan_scenes, music):
+    """A1.1: `music_max_seconds` = predicted film seconds rounded up to 5s when
+    every scene has `duration`, else `music.max_seconds` from brand.yaml, else
+    None (caller refuses). The predicted figure is the RAW SUM of scene
+    durations (not run through speedup/crossfade) -- a deliberately generous
+    upper bound: speedup and crossfade only ever shrink the real film, so this
+    never under-budgets, and it doesn't depend on the estimate's speedup
+    default matching whatever the real build resolves."""
+    durations = [s.get("duration") for s in plan_scenes]
+    if durations and all(d is not None for d in durations):
+        total = sum(float(d) for d in durations)
+        return int(math.ceil(total / 5.0) * 5)
+    explicit = music.get("max_seconds")
+    if explicit is not None:
+        return int(explicit)
+    return None
 
 
-def billed_block(tts, music):
+def rejected_tracks(root):
+    d = os.path.join(root, ".music-cache", "elevenlabs", "rejected")
+    if not os.path.isdir(d):
+        return []
+    return sorted(f for f in os.listdir(d) if f.endswith(".mp3"))
+
+
+def billed_block(tts, music_billed, music_max_seconds):
     lines = []
     billed = False
     if tts and tts["n_uncached"] > 0:
         billed = True
         lines.append(f"tts: {tts['n_uncached']}/{tts['n_total']} lines uncached, {tts['characters']} characters")
-    if music and not music.get("cached"):
+    if music_billed:
         billed = True
-        if music.get("pinned"):
-            lines.append(f"music: uncached, ~{music['seconds']} s requested")
-        else:
-            lines.append(f"music: uncached, ~{music['cap_seconds']} s requested (duration not pinned, capped)")
-    elif music and music.get("cached"):
-        lines.append("music: cached")
+        lines.append(f"music: uncached, ~{music_max_seconds} s requested")
     if not billed:
         return "Billed services: none", False
     return "Billed services\n" + "\n".join(f"  {l}" for l in lines), True
 
 
-def compute(cfg, plan_scenes, root):
-    tts = tts_estimate(cfg, root)
-    music = music_estimate(cfg, root, plan_scenes)
-    block, billed = billed_block(tts, music)
-    uncached_keys = tts["uncached_keys"] if tts else []
-    music_key = music["key"] if music else None
-    code = elevenlabs_api.approval_code(uncached_keys, music_key)
-    return block, billed, code
+def _write_approval(code, tts_keys, music_max_seconds):
+    record = {"code": code, "tts_keys": tts_keys, "music_max_seconds": music_max_seconds}
+    with open(APPROVAL_RECORD, "w", encoding="utf-8") as f:
+        json.dump(record, f)
 
 
 def main(argv):
@@ -140,17 +134,44 @@ def main(argv):
         plan_scenes = json.load(f).get("scenes", [])
     root = os.environ.get("DEMO_ROOT", "..")
 
-    block, billed, code = compute(cfg, plan_scenes, root)
+    music = cfg.get("music", {})
+    music_mode = music.get("mode") == "elevenlabs"
+
+    music_max_seconds = None
+    if music_mode:
+        music_max_seconds = music_budget_seconds(plan_scenes, music)
+        if music_max_seconds is None:
+            print(
+                "music.mode=elevenlabs needs a predictable length to budget spend: "
+                "either give every scene a `duration:` (so it can be predicted "
+                "automatically) or set `music.max_seconds` explicitly in brand.yaml.",
+                file=sys.stderr)
+            return 4
+
+    tts = tts_estimate(cfg, root)
+    uncached_keys = tts["uncached_keys"] if tts else []
+    block, billed = billed_block(tts, music_mode, music_max_seconds)
+    music_part = f"music<={music_max_seconds}s" if music_mode else None
+    code = elevenlabs_api.approval_code(uncached_keys, music_part)
 
     if argv[1] == "estimate":
         print(block)
+        rejected = rejected_tracks(root)
+        if rejected:
+            print(f"note: {len(rejected)} previously rejected track(s) in "
+                  ".music-cache/elevenlabs/rejected/ (silence dropout) -- retry "
+                  "with DEMO_RETRY_REJECTED=1, or change the request: "
+                  + ", ".join(rejected))
         if billed:
             print(f"APPROVAL CODE: {code}")
         return 0
 
+    # check
     if not billed:
+        _write_approval(None, [], music_max_seconds)
         return 0
     if os.environ.get("DEMO_APPROVE_SPEND") == code:
+        _write_approval(code, uncached_keys, music_max_seconds)
         return 0
     print(block)
     print(f"APPROVAL CODE: {code}")

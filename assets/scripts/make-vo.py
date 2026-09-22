@@ -3,8 +3,9 @@
 Providers (voice.provider in brand.yaml):
   edge-tts    (default) — Microsoft Edge TTS, streaming, free, no API key.
   elevenlabs  — ElevenLabs with-timestamps API, paid, per-line content-addressed
-                cache, gated by an approval code so an uncached line is never
-                billed without the operator seeing the estimate first.
+                cache. Every uncached line must be pre-approved by spend-gate.py
+                (see .spend-approved.json / SKILL.md Cost-gate protocol) — this
+                script never computes or prints its own approval code.
 
 Outputs:
   vo.mp3              — concatenated audio
@@ -18,11 +19,12 @@ import re
 import subprocess
 import sys
 
-import edge_tts
-
 import elevenlabs_api
 import timing_util
 import vo_audio
+# `edge_tts` is imported lazily, only inside gen_segments_edge() — importing it
+# unconditionally here would require it even for provider=elevenlabs, which has
+# no use for it (A1.5).
 
 # ── Config-driven: read voice + voiceover from .build/config.json ──────
 CONFIG_PATH = os.environ.get("DEMO_CONFIG", ".build/config.json")
@@ -83,6 +85,8 @@ def get_duration(path):
 # ── edge-tts provider ───────────────────────────────────────────────────
 async def gen_segments_edge():
     """Stream each segment, save audio + collect word boundaries."""
+    import edge_tts
+
     segments = []
     for i, (text, pause) in enumerate(SCRIPT):
         path = f"{WORK}/seg_{i:02d}.mp3"
@@ -104,15 +108,25 @@ async def gen_segments_edge():
     return segments
 
 
+APPROVAL_RECORD = ".spend-approved.json"
+
+
+def _load_approval():
+    """spend-gate.py's .spend-approved.json, written on a passing `check` --
+    the single source of truth for what's approved (A1.2). Never computed or
+    regenerated here."""
+    if not os.path.exists(APPROVAL_RECORD):
+        return None
+    try:
+        with open(APPROVAL_RECORD, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
 # ── elevenlabs provider ─────────────────────────────────────────────────
 def gen_segments_elevenlabs():
     root = os.environ.get("DEMO_ROOT", "..")
-    key = elevenlabs_api.load_key(root=root)
-    if not key:
-        print(
-            "voice.provider=elevenlabs but no API key found — set ELEVENLABS_API_KEY "
-            "or DEMO_ELEVENLABS_ENV_FILE (or <root>/.env)", file=sys.stderr)
-        sys.exit(3)
 
     if _voice.get("rate"):
         print("WARNING: voice.rate is ignored for provider=elevenlabs (edge-tts only)")
@@ -134,16 +148,29 @@ def gen_segments_elevenlabs():
                          "cache_key": cache_key, "audio_path": audio_path,
                          "json_path": json_path, "cached": cached})
 
+    # A1.2: check approval BEFORE the key -- an uncached line unapproved must
+    # exit 4 regardless of whether a key even exists (an unapproved request
+    # can never be attempted, so a missing key isn't the reason it's refused).
     uncached = [p for p in planned if not p["cached"]]
     if uncached:
-        code = elevenlabs_api.approval_code([p["cache_key"] for p in uncached], None)
-        if os.environ.get("DEMO_APPROVE_SPEND") != code:
-            n_chars = sum(len(p["spoken"]) for p in uncached)
+        approved = _load_approval()
+        approved_keys = set((approved or {}).get("tts_keys") or [])
+        missing = [p for p in uncached if p["cache_key"] not in approved_keys]
+        if missing:
             print(
-                f"elevenlabs TTS would bill {len(uncached)} uncached line(s), "
-                f"{n_chars} characters. Re-run with DEMO_APPROVE_SPEND={code} "
-                "after reviewing the plan. No network call made.", file=sys.stderr)
+                f"{len(missing)} uncached elevenlabs TTS line(s) are not in the approved "
+                "spend record — run spend-gate first (see SKILL.md Cost-gate protocol). "
+                "No network call made.", file=sys.stderr)
             sys.exit(4)
+
+    key = None
+    if uncached:
+        key = elevenlabs_api.load_key(root=root)
+        if not key:
+            print(
+                "voice.provider=elevenlabs but no API key found — set ELEVENLABS_API_KEY "
+                "or DEMO_ELEVENLABS_ENV_FILE (or <root>/.env)", file=sys.stderr)
+            sys.exit(3)
 
     segments = []
     for p in planned:
