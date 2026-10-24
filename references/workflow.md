@@ -7,6 +7,27 @@ below, with `build-scenes.sh` (records every scene by type), the optional auth l
 `autofit.py` before step 3, and `verify-final.py` before step 7.
 Only scene clips are cached (see "Cache behavior"); the other steps re-run on every build.
 
+```
+apply-brand.py    → compile brand.yaml → .build/ (rendered templates + config.json)
+plan-scenes.py    → resolve the scene sequence → scene-plan.json   (--plan stops here: dry-run-plan.py)
+render-mascot.py  → mascot sprite frames (if mascot: configured)
+make-vo.py        → Edge TTS streams vo.mp3 + vo-words.json (word-level timing)
+make-captions.py  → captions.ass (karaoke) + captions.srt
+make-auth.mjs     → (if `auth:` set) log in once → auth.json; scripted (creds) | manual (SSO/2FA)
+build-scenes.sh   → record each scene by type; pin to `duration:` if set; cached per scene
+autofit.py        → (if `scenes.autofit`) adjust speedup so video holds the voiceover
+assemble.sh       → normalize + speedup + crossfade N scenes → final-rough.mp4
+make-music.sh     → music.mp3 fitted to final-rough.mp4
+mix-final.sh      → ⚠ timing gate (check-timing.py) → voice + ducked music → final-with-audio.mp4
+burn-captions.sh  → final-with-captions.mp4
+verify-final.py   → ⚠ blocks on duration drift, missing/silent audio, white flash
+record-frame.mjs  → Playwright snapshot + ffmpeg overlay → final-framed.mp4
+```
+
+Timing safety net: `mix-final.sh` cuts the voice to the video length, so `check-timing.py`
+compares the real speech end (`vo-words.json`) with the video first and fails the build if
+narration overruns. Override with `DEMO_ALLOW_TRUNCATE=1`.
+
 ## Dependency graph
 
 ```
@@ -157,3 +178,30 @@ demo-video/
 └── videos/                     ← pipeline outputs
     └── final-framed.mp4        ← the deliverable
 ```
+
+## Vendored scripts
+
+Each project keeps a COPY of these scripts in `demo-video/scripts/`. A partial re-sync (some
+files refreshed, others stale) used to fail silently (e.g. a new `build.sh` passing `--scale`
+to an old `render-mascot.py`). `build.sh` fingerprints its scripts against the committed
+`assets/scripts/VERSION` and **warns** if they're inconsistent — re-copy ALL of
+`assets/scripts/*` to fix. `DEMO_STRICT_SCRIPTS=1` makes drift a hard error instead of a
+warning. After changing any runtime script, refresh the stamp:
+`python3 assets/scripts/scripts_fingerprint.py --write assets/scripts` (a unit test enforces
+it's current). **Migration:** projects scaffolded before this guard existed lack
+`scripts_fingerprint.py`/`VERSION` and silently skip the check until you re-copy the full
+`assets/scripts/*` set once.
+
+## Tests
+
+- **Unit tests** — `python3 -m unittest discover -s tests` (timing/duration, scene cache,
+  mascot data/shading/timeline/sources, python resolution, Chromium path override).
+- **Integration smoke** — `bash tests/smoke_build.sh` scaffolds a throwaway project and
+  exercises the real pipeline. It always runs a light `--plan` tier (config + scene-plan +
+  drift guard); with `node` + `edge-tts` + a Playwright `node_modules` present (or
+  `DEMO_SMOKE_NODE_MODULES=/path`) it also does a FULL render and asserts a non-blank video.
+  Catches integration breaks unit tests can't (mockups not copied into `.build`, mascot-less
+  arg skew, white-flash).
+- **CI** — `.github/workflows/test.yml`: unit tests, shell syntax checks and the `--plan`
+  smoke tier (with setup-python, and again with no `python` on PATH), plus a full-render
+  smoke job.
