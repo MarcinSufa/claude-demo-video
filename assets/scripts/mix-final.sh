@@ -5,6 +5,14 @@
 set -e
 cd "$(dirname "$0")"
 
+# Python interpreter: $PY (exported by build.sh), else $PYTHON, else the first of
+# python3 / python that actually runs. Stock Linux ships only python3; on Windows a
+# python3 Store alias can exist without working, hence the probe instead of command -v.
+if [ -z "${PY:-}" ]; then
+  for PY in "${PYTHON:-}" python3 python ""; do [ -n "$PY" ] && "$PY" -c "" 2>/dev/null && break; done
+fi
+[ -n "$PY" ] || { echo "Missing: python3 (or set PYTHON=/path/to/python)"; exit 1; }
+
 VIDEO=videos/final-rough.mp4
 VO=vo.mp3
 MUSIC=music.mp3
@@ -14,14 +22,14 @@ CFG="${DEMO_CONFIG:-config.json}"
 [ -f "$VO" ] || { echo "Missing $VO — run: python make-vo.py"; exit 1; }
 
 MUSIC_VOL=0.45
-[ -f "$CFG" ] && MUSIC_VOL=$(python -c "import json;print(json.load(open('$CFG')).get('music',{}).get('volume',0.45))")
+[ -f "$CFG" ] && MUSIC_VOL=$("$PY" -c "import json;print(json.load(open('$CFG')).get('music',{}).get('volume',0.45))")
 
 VIDEO_DUR=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$VIDEO")
 
 # ── P0-1 safety net: never silently truncate narration ──
 # Below, the voice is apad-padded then hard-cut with `-t "$VIDEO_DUR"`. If the
 # voiceover runs past the video, the closing line is lost with no warning. Gate it.
-python check-timing.py "$VIDEO" vo-words.json || exit 1
+"$PY" check-timing.py "$VIDEO" vo-words.json || exit 1
 
 if [ -f .music-none ] || [ ! -f "$MUSIC" ]; then
   # ── Voice only (music.mode: none) ──

@@ -4,7 +4,7 @@ Unit tests for the pure logic behind the timing-safety and scene-duration featur
 No extra dependencies — Python stdlib `unittest` only (Python is already a skill prereq).
 
 ```bash
-python -m unittest discover -s tests
+python3 -m unittest discover -s tests
 ```
 
 | Test file | Covers |
