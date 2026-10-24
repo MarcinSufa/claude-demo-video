@@ -106,3 +106,54 @@ On a typical run (clean cache):
 - **Total: ~75s** for a 50s output video.
 
 Cached re-run: ~30s (Playwright + final encode dominate).
+
+## File map
+
+```
+demo-video/
+├── brand.yaml                  ← user edits this
+├── mascot.json                 ← optional: custom mascot (or copied from mascots/ by build.sh)
+├── mascots/                    ← roster characters copied from assets/mascots/ at init
+│   └── octopus.json            ← built-in octopus character
+├── scripts/                    ← copied from skill
+│   ├── apply-brand.py          ← compiles brand.yaml → .build/
+│   ├── make-vo.py
+│   ├── make-captions.py
+│   ├── make-music.sh           ← music bed fitted to the video (library / procedural / file / none)
+│   ├── fetch-music.py          ← CC0 track fetch + sha256 cache (music/manifest.yaml)
+│   ├── verify-final.py         ← post-mux gate: duration, audio, white flash, captions per scene
+│   ├── plan-scenes.py          ← resolves scene sequence
+│   ├── build-scenes.sh
+│   ├── assemble.sh
+│   ├── mix-final.sh
+│   ├── burn-captions.sh
+│   ├── timing_util.py          ← shared VO/video alignment math (unit-tested)
+│   ├── check-timing.py         ← P0-1 truncation gate (run by mix-final.sh)
+│   ├── dry-run-plan.py         ← P3-1 dry run (run by build.sh --plan)
+│   ├── normalize-clip.py       ← P0-3 pin a scene to exact duration
+│   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes
+│   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker gate
+│   ├── autofit.py              ← P0-1 opt-in: fit speedup to voiceover length
+│   ├── mascot_data.py          ← parse mascot.json sprite grid
+│   ├── render-mascot.py        → render mascot sprite frames from mascot.json
+│   ├── resolve-mascot-timeline.py ← map scene timeline to mascot emotion segments
+│   ├── overlay-mascot.py       ← composite mascot frames onto scene video
+│   ├── mascot_brand.py         ← remap mascot palette to brand colors
+│   ├── make-auth.mjs           ← P2-1 log in once → auth.json (storageState)
+│   ├── record-frame.mjs
+│   ├── record-endcards.mjs
+│   ├── record-graph.mjs
+│   ├── record-browser.mjs      ← real-app / html_mockup capture (glow/highlight selectors must match one node)
+│   ├── glow_check.mjs          ← selector validation shared with tests
+│   ├── display.sh
+│   └── build.sh                ← orchestrator (build | --plan)
+├── templates/
+│   ├── frame.html              ← terminal-on-desk composite
+│   ├── endcards.html           ← branded end cards
+│   ├── graph.html              ← knowledge graph
+│   └── tape/                   ← VHS scene tapes
+├── assets/
+│   └── backdrop.jpg            ← Unsplash workspace photo (or user-supplied)
+└── videos/                     ← pipeline outputs
+    └── final-framed.mp4        ← the deliverable
+```

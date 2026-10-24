@@ -164,27 +164,15 @@ When invoked, follow this sequence:
    - Print: "Run `pnpm install && pnpm exec playwright install chromium`, edit `brand.yaml`, then `/demo-video plan` and `/demo-video build`."
 
 3. **For `build`**:
-   - Read `brand.yaml`
-   - `build.sh` resolves the scene plan first, then gates prerequisites **arc-aware**:
-     ffmpeg/python/node/edge-tts/Playwright always; VHS/Docker only if the plan has a
-     terminal or multi-agent scene. Caching (`--no-cache`, `--only <id>`) reuses
-     unchanged scene clips between runs.
-   - If any missing → it prints the exact install command and STOPs
-   - Template the scripts: substitute `{{project.name}}`, `{{palette.bg}}`, etc. into the bundled scripts/HTML/tape files
-   - Start local http server: `python -m http.server 8765` (background)
-   - Run pipeline in sequence:
-     ```bash
-     python make-vo.py
-     python make-captions.py
-     bash assemble.sh
-     bash make-music.sh
-     bash mix-final.sh
-     bash burn-captions.sh
-     python verify-final.py videos/final-with-captions.mp4 --rough videos/final-rough.mp4
-     node record-frame.mjs
-     ```
-   - On each step, report progress to user
-   - On any error, stop and show ffmpeg/playwright stderr — most issues are missing fonts or wrong palette syntax
+   - Run `bash scripts/build.sh` from the `demo-video/` folder (where `brand.yaml` lives).
+     It compiles `brand.yaml` into `.build/`, resolves the scene plan, gates prerequisites
+     **arc-aware** (ffmpeg/python3/node/edge-tts/Playwright always; VHS/Docker only if the
+     plan has a terminal or multi-agent scene), starts the local http server and runs every
+     step listed under *Pipeline*. Never run the steps by hand.
+   - If a prerequisite is missing it prints the install command and STOPs.
+   - Re-runs reuse unchanged scene clips: `--only <id>` re-records one scene, `--no-cache` all.
+   - Report its progress lines to the user. On an error, show the ffmpeg/Playwright stderr;
+     most issues are missing fonts or wrong palette syntax (`references/troubleshooting.md`).
 
 3b. **For `plan`** (dry run, ~1s, no render):
    - `bash scripts/build.sh --plan`
@@ -212,100 +200,13 @@ easy to discard. Reserve `browser_capture` for routes that genuinely exist.
 
 ## Before / after task demos (`before_after` scene)
 
-To show a task's outcome — the bug, then the fix — use a **`before_after`** scene.
-It takes two clips, burns a colored banner on each (red = before, green = after by
-default), and joins them — `layout: sequential` (before then after) or
-`side_by_side` (the two clips next to each other).
-
-```yaml
-sequence:
-  - hero
-  - type: before_after
-    before: { source: "footage/before.mp4", label: "BEFORE — the bug" }
-    after:  { source: "footage/after.mp4",  label: "AFTER — the fix" }
-    layout: sequential        # or "side_by_side"
-    half_duration: 8          # optional: trim each half to N seconds
-  - endcards
-```
-
-Each half is a **clip path / `{ source }`**, or a **`browser_capture` spec**
-(`{ url, actions, auth, ... }`) that the pipeline records for you — so you can
-point `before` at the deployed/no-fix URL and `after` at the fixed branch and let
-it capture both. A `source` path is taken **relative to your demo project
-directory** (where `brand.yaml` lives, e.g. `footage/before.mp4`), or absolute.
-How to produce the two clips for a *code* change:
-
-1. Record the **before** against the no-fix state (deployed URL, or the base
-   branch's dev server), e.g. via a Playwright/e2e run with `video: 'on'`, or a
-   `before_after` half with `before: { url: <staging>, actions: [...] }`.
-2. Record the **after** against the fixed branch the same way (a second dev server
-   on another port + re-auth, or `after: { url: <local-fix>, ... }`).
-3. Drive the *same* interaction in both so the comparison is honest; trim with
-   `half_duration` and label each side.
-
-**Focus the capture on what changed.** A `before_after` capture half is a
-`browser_capture` spec, so its `actions` take focus controls: `glow`/`highlight`
-to pulse the touched element (the selector must match exactly one DOM node, or the
-recording stops naming the action, selector and count), `waitToast` to guarantee an error/success
-notification is on screen, and per-action `speed` (ramp out a slow load) + `zoom`
-(Ken Burns onto the toast/field). Off-screen targets are auto-scrolled into view
-before interaction. So a bug→fix demo reads clearly — the viewer sees the toast in
-BEFORE and its absence in AFTER, full-frame, without watching spinners. See
-`references/scene-config.md` → *Focus & pacing*. (`clip` frames one region for the
-whole half; `speed`/`zoom` are time-windowed and composable with it.)
-
-Banner labels render through ffmpeg `drawtext`, which is not reliably UTF-8 on
-Windows — labels are auto-sanitized to ASCII (an em-dash becomes `-`), so keep
-them short and plain.
+Shows a task's outcome: the bug, then the fix, as two labeled clips (sequential or side by side).
+Read `references/before-after.md` when a scene uses `type: before_after` or the user asks for a bug→fix demo.
 
 ## Diorama scene (`diorama`)
 
-A **`diorama`** lays out N terminal/browser windows on one big canvas, then moves
-an eased camera that pans and zooms between them while the mascot hops from window
-to window — the "agent view" of several sessions working at once. Each window is a
-recorded clip (a `source` mp4 or a live `url` capture) placed at a canvas
-`(x, y)` with a width `w`; the camera visits `focus` targets; the mascot is
-keyed per window.
-
-```yaml
-sequence:
-  - hero
-  - type: diorama
-    duration: 14                 # optional — defaults to the camera tour's length
-    canvas: { width: 2560, height: 1440, backdrop: "color=c=0x0a0705" }  # 16:9; backdrop: lavfi color= or an image path
-    windows:                     # id + top-left (x,y) + width (w); height follows the clip aspect
-      - { id: worker,   source: "footage/worker.mp4",        x: 120,  y: 300, w: 1000, chrome: true }
-      - { id: reviewer, url: "http://localhost:3000/review", x: 1440, y: 600, w: 1000, actions: [{ wait: 1.0 }] }
-    camera:                      # focus: a window id | "all" (bbox of all windows); zoom>1 tightens
-      - { focus: all,      zoom: 1.0, hold: 1.5 }
-      - { focus: worker,   zoom: 1.8, hold: 3.0, transition: 1.2 }   # transition eases INTO this stop
-      - { focus: reviewer, zoom: 1.8, hold: 3.0, transition: 1.2 }
-    mascot:                      # window-relative keyframes: at_window + anchor (top | beside | on)
-      keyframes:
-        - { at: 0,  emotion: idle,      at_window: worker,   anchor: top }
-        - { at: 5,  emotion: point,     at_window: reviewer, anchor: beside }   # auto-walks worker -> reviewer
-        - { at: 10, emotion: celebrate, at_window: reviewer, anchor: top }
-```
-
-How it builds: every window clip is composited onto the canvas at its `(x, y)`,
-the mascot is drawn at its window-relative anchor (in canvas space), then a single
-`zoompan` camera renders the 1920×1080 scene by panning/zooming over the canvas.
-Camera coordinates are eased with smoothstep; the mascot auto-walks between windows
-when consecutive keyframes target different ones.
-
-**v1 boundaries:**
-- **Windows are static** — they don't move or animate position; only the camera moves.
-- **The mascot is placed at anchors**, not physics/collision-walked — `top` perches
-  on a window's top edge, `beside` sits to its right, `on` centers inside it.
-- **The canvas must be 16:9** (the camera frames a 16:9 region; a non-16:9 canvas
-  would distort). 2560×1440 is the natural choice.
-- **Heavier to render** than a flat scene — it composites the canvas and runs a
-  second camera pass, so expect a diorama to cost more than an equivalent single clip.
-- **Window chrome (`chrome: true`).** A window may set `chrome: true` (and an optional `title:`, default = the window id) to draw a macOS-style title bar — three traffic-light dots + the title — framing it. Use it for raw `source`/`url` clips that don't bring their own window frame (the Fractal mockups draw their own chrome in HTML). The bar adds a fixed height above the clip, and the camera frames the whole window including its chrome. Long titles may clip.
-
-The global mascot's corner overlay is **auto-suppressed** on diorama scenes (the
-scene composites its own mascot on the canvas), so a diorama and ordinary overlaid
-scenes coexist in one video without a double mascot.
+Several windows on one canvas with a moving camera and the mascot hopping between them.
+Read `references/diorama.md` when a scene uses `type: diorama`.
 
 ## Pronouncing brand names
 
@@ -314,74 +215,10 @@ TTS reads brand names phonetically in its own language — a Polish voice says
 with an English product name, sanity-check pronunciation and add a `voice.pronounce`
 map in brand.yaml (respell for the voice; captions keep the original spelling).
 
-## Critical gotchas (must apply, do not skip)
+## Critical gotchas
 
-These were discovered the hard way building the reference implementation. The bundled scripts already encode them but if the agent regenerates from scratch, re-apply:
-
-| Gotcha | Fix |
-|---|---|
-| **HTML pages record as WHITE flashes** at start because Playwright captures pre-CSS frames | (a) Inline `style="background:#0a0705"` on `<html>`. (b) `-ss` trim in ffmpeg conversion. For `html_mockup` scenes the recorder now ALSO injects the palette bg before first paint automatically (P2-3), so a mockup that forgets the inline bg won't flash. |
-| **First capture of a cold dev-server route shows "Rendering…"** (Next compiles on first hit) | `browser_capture` warms the route in a separate non-recording context before recording (P2-2). Default on for `localhost`, off for public sites; override per-scene with `warmup: true|false`. |
-| **Brand fonts don't load / wrong font on end card** | The Google Fonts `<link>` is generated from `typography.{display,body,mono,tagline}` (P1-3). Google `css2` is strict — an unsupported axis 400s the whole request — so `apply-brand.py` keeps a per-family axis table (`FONT_SPECS`); unknown families load regular-only and print a warning. Add new families there. |
-| **Audio truncates video** to voice length (~45s) instead of full 50s, causing white tail | `apad` on voice + `duration=first` on amix in `mix-final.sh`. Never use `-shortest` for the final mux. |
-| **record-graph.mjs picks endcards.webm alphabetically** when both exist | Delete `graph.webm` and `graph.mp4` at start of script. Filter webm list by mtime, not name. |
-| **VHS terminal pre-CSS shows white** during VHS startup | Use bash here-doc to print Vellum theme + clear screen before any content prints |
-| **Embedded `<video>` in Playwright headless plays at ~20% speed** due to throttling | Don't embed video in Playwright. Use ffmpeg `overlay` filter to composite source video onto a Playwright-captured PNG of the frame chrome. |
-| **Edge TTS WordBoundary events don't fire by default** | Pass `boundary="WordBoundary"` to `edge_tts.Communicate(...)` |
-| **Scene crossfade offsets drift** when scene durations change | `assemble.sh` reads actual normalized durations via ffprobe before computing xfade offsets, never hardcodes |
-| **VO timing drifts from scenes** | `check-timing.py` now checks this automatically on every build (Problem B): it maps each VO line to the scene it starts in and warns (never fails the build) if the line overruns that scene's window, including the internal BEFORE/AFTER cut inside a composite `before_after` scene. No hand-run script needed -- if a warning prints, adjust `pause_after` values in `brand.yaml` and regenerate VO. |
-| **Karaoke captions wash out on light app UI** (`browser_capture` / `html_mockup` scenes) | Use `BorderStyle=3` opaque box. The box colour goes in the **`OutlineColour` slot** (libass draws the BorderStyle=3 box from OutlineColour, NOT BackColour) and **must be fully opaque (alpha `00`)** — a semi-transparent box overlaps at the per-word `\k` seams and doubles up into ugly darker vertical bands. Set box colour = `palette_bg` so it blends invisibly on dark terminal scenes but reads as a solid bar over light UI. |
-
-## File map
-
-```
-demo-video/
-├── brand.yaml                  ← user edits this
-├── mascot.json                 ← optional: custom mascot (or copied from mascots/ by build.sh)
-├── mascots/                    ← roster characters copied from assets/mascots/ at init
-│   └── octopus.json            ← built-in octopus character
-├── scripts/                    ← copied from skill
-│   ├── apply-brand.py          ← compiles brand.yaml → .build/
-│   ├── make-vo.py
-│   ├── make-captions.py
-│   ├── make-music.sh           ← music bed fitted to the video (library / procedural / file / none)
-│   ├── fetch-music.py          ← CC0 track fetch + sha256 cache (music/manifest.yaml)
-│   ├── verify-final.py         ← post-mux gate: duration, audio, white flash, captions per scene
-│   ├── plan-scenes.py          ← resolves scene sequence
-│   ├── build-scenes.sh
-│   ├── assemble.sh
-│   ├── mix-final.sh
-│   ├── burn-captions.sh
-│   ├── timing_util.py          ← shared VO/video alignment math (unit-tested)
-│   ├── check-timing.py         ← P0-1 truncation gate (run by mix-final.sh)
-│   ├── dry-run-plan.py         ← P3-1 dry run (run by build.sh --plan)
-│   ├── normalize-clip.py       ← P0-3 pin a scene to exact duration
-│   ├── scene_cache.py          ← P0-2 skip re-capturing unchanged scenes
-│   ├── prereqs.py              ← P1-2 arc-aware VHS/Docker gate
-│   ├── autofit.py              ← P0-1 opt-in: fit speedup to voiceover length
-│   ├── mascot_data.py          ← parse mascot.json sprite grid
-│   ├── render-mascot.py        → render mascot sprite frames from mascot.json
-│   ├── resolve-mascot-timeline.py ← map scene timeline to mascot emotion segments
-│   ├── overlay-mascot.py       ← composite mascot frames onto scene video
-│   ├── mascot_brand.py         ← remap mascot palette to brand colors
-│   ├── make-auth.mjs           ← P2-1 log in once → auth.json (storageState)
-│   ├── record-frame.mjs
-│   ├── record-endcards.mjs
-│   ├── record-graph.mjs
-│   ├── record-browser.mjs      ← real-app / html_mockup capture (glow/highlight selectors must match one node)
-│   ├── glow_check.mjs          ← selector validation shared with tests
-│   ├── display.sh
-│   └── build.sh                ← orchestrator (build | --plan)
-├── templates/
-│   ├── frame.html              ← terminal-on-desk composite
-│   ├── endcards.html           ← branded end cards
-│   ├── graph.html              ← knowledge graph
-│   └── tape/                   ← VHS scene tapes
-├── assets/
-│   └── backdrop.jpg            ← Unsplash workspace photo (or user-supplied)
-└── videos/                     ← pipeline outputs
-    └── final-framed.mp4        ← the deliverable
-```
+The bundled scripts already handle white flashes, audio truncation, WordBoundary timing, caption contrast and more.
+Read `references/gotchas.md` before regenerating or editing any script or template by hand.
 
 ## Output
 
@@ -393,129 +230,8 @@ After `build` completes, the user has:
 
 ## Mascot
 
-An animated mascot character can be overlaid on any scene. Configure globally in `brand.yaml`:
-
-```yaml
-mascot:
-  character: octopus      # roster character (or ship your own mascot.json next to brand.yaml)
-  enabled: true
-  position: bottom-right  # bottom-left | top-right | top-left
-  scale: 1.0
-  shade: true             # CHOICE: true = painted depth · false/omit = flat (default). See below.
-```
-
-**Shaded or flat — your choice.** The `shade` flag is the single switch between
-the two looks: leave it off (or `false`) for the original flat fills, set `true`
-for procedural depth. Default is flat, so existing builds are unchanged; flipping
-one line lets you compare.
-
-**Procedural shading (`shade: true`).** A flat character gets dimensionality at
-build time with no art rework: `shade_sprite.py` (shader v2) adds a *hue-shifted
-ramp* the way pixel artists do it — light reads warm, shadow reads cool, so flat
-fills look painted rather than just dimmed. On the top of the silhouette it places
-a `hi` rim that's lighter **and** hue-rotated toward yellow (slightly
-desaturated); along the bottom a `shade` rim that's darker **and** hue-rotated
-toward blue/purple (slightly more saturated). A second, deeper `shade2` lands on
-the silhouette floor and under overhangs (chin, pouch) for a two-step shadow
-gradient instead of one flat band, and a subtle 1-cell checkerboard *dither*
-softens the body→shadow boundary into texture rather than a hard line. Each eye
-still gets a near-white catch-light. It's deterministic, derives every new colour
-from the character's own body colour (near-greys ramp by value only, no tint), and
-works on any character that has `body` and `eyes` palette slots. The dither is on
-by default (pass `--no-dither` to `shade_sprite.py` to disable). Off by default
-(flat fills); opt in per project.
-
-### Art sources (`mascot.source`)
-
-The mascot art can come from three places — all converge on the same rendered
-frame contract (`<dir>/<emotion>/f_%03d.png` + `mascot-meta.json`), so the
-overlay, keyframes, caching, and motion work identically whatever the source:
-
-- **`grid`** (default) — a hand-authored pixel-grid `mascot.json` (a roster
-  character or your own), optionally `shade`d, rendered by `render-mascot.py`.
-  Fully free, deterministic, editable, brand-remappable.
-- **`sheet`** — import an external sprite sheet + Aseprite-style frames JSON
-  (the format libresprite, Aseprite, and pixel-art plugins export). Lets a human
-  artist or another tool author the sprites; `import-spritesheet.py` slices the
-  sheet by its `frameTags` into per-emotion frames. Tag your animations with the
-  emotion names (`idle`, `walk`, `panic`, …).
-
-  ```yaml
-  mascot:
-    source: sheet
-    sheet: mascot-sheet.png    # next to brand.yaml
-    tags: mascot-sheet.json    # Aseprite frames+frameTags export
-  ```
-
-- **`pixellab`** — generate the character and its cycles with the PixelLab API
-  (AI pixel-art, **paid**). The API key is read from the `PIXELLAB_API_KEY`
-  environment variable, or from `~/.pixellab/credentials.json`
-  (`{"api_key": "..."}`); without a key the build warns and proceeds mascot-less.
-  `gen-pixellab.py` creates a base character from the prompt, animates it per
-  emotion, and writes the frames.
-
-  ```yaml
-  mascot:
-    source: pixellab
-    prompt: "a coral kangaroo with a cream pouch, friendly"
-    n_frames: 6
-  ```
-
-  Run `python gen-pixellab.py <out> --prompt "…" --dry-run` to exercise the
-  plumbing without a key or spend.
-
-Whichever source you use, ideally cover the full emotion set
-(idle/type/walk/panic/celebrate/sleep/point/enter/exit). Any emotion a sheet or
-PixelLab run doesn't provide is **filled from `idle`** at build time (with a
-warning) so the overlay never hard-fails — that emotion simply renders as idle.
-`idle` itself must be present.
-
-The mascot's emotion is inferred from the scene type by default (e.g. `type` for terminal, `idle` for browser captures). Override per scene using the dict form in `scenes.sequence`:
-
-```yaml
-scenes:
-  sequence:
-    - hero
-    - type: before_after
-      before: { source: footage/before.mp4 }
-      after:  { source: footage/after.mp4 }
-      mascot: { before: panic, after: celebrate }   # emotion per half
-    - type: browser_capture
-      url: http://localhost:3000
-      mascot: { emotion: celebrate }                # single emotion override
-    - type: terminal
-      scene: recall
-      mascot: { enabled: false }                    # suppress for this scene
-    - endcards
-```
-
-**Built-in string scene names** (e.g. `"hero"`, `"graph"`) do not support per-scene `mascot:` overrides — use the dict form `{ type: ..., mascot: {...} }` for that. The global `mascot:` block in `brand.yaml` still applies to all scenes.
-
-**Keyframe choreography.** Within a single scene you can time-stamp emotions and positions using `keyframes`. Each keyframe has an `at` (seconds from scene start), an `emotion`, and an optional `position`. Keyframes replace event-based resolution for that scene; the mascot holds the default emotion/position before the first keyframe if its `at` > 0.
-
-```yaml
-- type: html_mockup
-  source: mockups/board.html
-  duration: 15
-  mascot:
-    keyframes:
-      - { at: 0,  emotion: idle }
-      - { at: 4,  emotion: type }
-      - { at: 9,  emotion: point, position: bottom-left }
-      - { at: 13, emotion: celebrate }
-```
-
-**Walk between positions.** When consecutive keyframes (or segments) have different `position` values, the pipeline automatically inserts a 0.8 s `walk` move-segment at the start of the later segment. The mascot slides from the old anchor to the new one using a lerped ffmpeg expression — no manual walk step required.
-
-**Motion modifiers.** Two emotions add physical motion on top of position:
-- `celebrate` — bounces the mascot vertically (`18 * abs(sin((t-AT)*4))` px) while playing the celebrate animation frames.
-- `panic` — shakes the mascot horizontally (`4 * sin((t-AT)*18)` px) while playing the panic animation frames.
-
-**Roster.** Built-in characters: `octopus`, `tessel`, `kangaroo`. Specify one with `mascot.character` in `brand.yaml`. You can also ship a custom `mascot.json` next to `brand.yaml` (any character name).
-
-**Never blocks the build.** If `render-mascot.py` fails (missing font, bad JSON), the pipeline warns and continues mascot-less — the video still renders.
-
-**Two-layer cache.** Mascot frames are cached separately from scene recordings. Changing `mascot:` config (emotion, position, scale, keyframes) re-overlays without re-recording, so iteration is fast.
+An optional animated pixel mascot (`mascot:` in brand.yaml; grid, sprite sheet or paid PixelLab art).
+Read `references/mascot.md` when the user wants a mascot or a build prints a mascot warning.
 
 ## Testing & maintenance
 
