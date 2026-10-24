@@ -33,7 +33,7 @@ How to produce the two clips for a *code* change:
 
 **Focus the capture on what changed.** A `before_after` capture half is a
 `browser_capture` spec, so its `actions` take focus controls: `glow`/`highlight`
-to pulse the touched element (the selector must match exactly one DOM node, or the
+to pulse the touched element (the selector must match exactly one node, or the
 recording stops naming the action, selector and count), `waitToast` to guarantee an error/success
 notification is on screen, and per-action `speed` (ramp out a slow load) + `zoom`
 (Ken Burns onto the toast/field). Off-screen targets are auto-scrolled into view

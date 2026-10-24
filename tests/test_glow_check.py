@@ -53,8 +53,9 @@ class SelectorCountError(unittest.TestCase):
         self.assertIn("0", msg)
 
     def test_invalid_selector_is_an_error(self):
-        msg = _call("selectorCountError", "click", "button >> nth=0", None)
-        self.assertIn("button >> nth=0", msg)
+        msg = _call("selectorCountError", "click", "button[", None)
+        self.assertIn("button[", msg)
+        self.assertIn("not a valid selector", msg)
 
 
 if __name__ == "__main__":

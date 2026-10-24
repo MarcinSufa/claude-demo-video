@@ -129,8 +129,11 @@ async function glideTo(page, selector) {
   return { tx, ty };
 }
 
+// The selector goes through page.locator, so Playwright syntax (":has-text(...)",
+// "role=button[name=...]", "text=") works as well as CSS; the page gets the element handle.
 async function glow(page, selector) {
-  await page.evaluate((s) => window.__demoGlow && window.__demoGlow(s), selector).catch(() => {});
+  const el = await page.locator(selector).elementHandle({ timeout: 2000 }).catch(() => null);
+  if (el) await page.evaluate((node) => window.__demoGlow && window.__demoGlow(node), el).catch(() => {});
   await page.waitForTimeout(400);
 }
 
@@ -223,10 +226,12 @@ const stamp = () => Math.max(0, (Date.now() - recStart) / 1000 - trimStart);
 async function assertGlowTarget(action) {
   const selector = glowTarget(action);
   if (!selector) return;
-  await page.waitForSelector(selector, { state: 'attached', timeout: 5000 }).catch(() => {});
-  const count = await page.evaluate((s) => {
-    try { return document.querySelectorAll(s).length; } catch { return null; }
-  }, selector);
+  let count = null;
+  try {
+    const target = page.locator(selector);
+    await target.first().waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
+    count = await target.count();
+  } catch { count = null; }   // unparseable selector
   const problem = selectorCountError(actionLabel(action), selector, count);
   if (!problem) return;
   console.error(problem);

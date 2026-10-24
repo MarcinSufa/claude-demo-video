@@ -42,7 +42,7 @@ Minimal `scene.json` (paths are relative to the current folder):
 ```
 
 - Actions: `hover`, `click`, `fill`, `type`, `press`, `scroll`, `scroll_into_view`, `wait`, `waitToast`, `highlight`; `glow: true` pulses the target. Options: `clip` (crop to one element), `settle_ms`, `tail_ms`, `cursor`, `initScript`. Full list: `references/scene-config.md` → `browser_capture`.
-- A `glow`/`highlight` selector must match exactly one element, or the recording stops and names the action, selector and count.
+- A `glow`/`highlight` selector (CSS or Playwright: `button:has-text("Save")`, `role=button[name="Save"]`) must match exactly one element, or the recording stops and names the action, selector and count.
 - Output: the mp4 at `output` (default `videos/scene_browser.mp4`) plus `<output>.events.json`. Per-action `speed`/`zoom` are applied only by `python3 cut-clip.py <output>` (copy it too).
 - Wrong browser build ("Executable doesn't exist", `chromium_headless_shell-12xx`): set `DEMO_CHROMIUM_PATH` to an installed Chromium/Chrome binary (`ls ~/.cache/ms-playwright/`). Do not patch `executablePath` in the scripts. More: `references/troubleshooting.md`.
 
