@@ -4,6 +4,7 @@
 // Run: node record-endcards.mjs   (server must be on :8765)
 
 import { chromium } from 'playwright';
+import { launchOptions } from './chromium_launch.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,7 +23,7 @@ for (const stale of ['endcards.webm', 'endcards.mp4']) {
 }
 
 console.log('Launching Chromium...');
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch(launchOptions({ headless: true }));
 const context = await browser.newContext({
   viewport: { width: W, height: H },
   deviceScaleFactor: 1,

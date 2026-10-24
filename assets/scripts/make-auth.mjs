@@ -25,6 +25,7 @@
 // No auth block → no-op (exits 0).
 
 import { chromium } from 'playwright';
+import { launchOptions } from './chromium_launch.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 
 const cfg = existsSync('config.json') ? JSON.parse(readFileSync('config.json', 'utf-8')) : {};
@@ -71,7 +72,7 @@ if (mode === 'manual') {
     console.log('  manual auth: reusing existing auth.json (delete it to log in again)');
     process.exit(0);
   }
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch(launchOptions({ headless: false }));
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   console.log('\n  >>> A browser window is opening — LOG IN to the app there.');
@@ -88,7 +89,7 @@ if (mode === 'manual') {
 }
 
 // ── scripted mode (default) ─────────────────────────────────────────────
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch(launchOptions({ headless: true }));
 const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
 const page = await context.newPage();
 

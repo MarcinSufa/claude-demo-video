@@ -12,6 +12,7 @@
 //   2) node record-graph.mjs
 
 import { chromium } from 'playwright';
+import { launchOptions } from './chromium_launch.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,10 +31,10 @@ for (const stale of ['graph.webm', 'graph.mp4']) {
 }
 
 console.log('Launching Chromium...');
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOptions({
   headless: true,
   args: ['--disable-web-security', '--disable-blink-features=AutomationControlled'],
-});
+}));
 const context = await browser.newContext({
   viewport: { width: W, height: H },
   deviceScaleFactor: 2, // crisp 2x rendering

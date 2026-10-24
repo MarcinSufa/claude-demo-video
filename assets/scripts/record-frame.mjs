@@ -6,6 +6,7 @@
 // Output: videos/final-framed.mp4
 
 import { chromium } from 'playwright';
+import { launchOptions } from './chromium_launch.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,7 +34,7 @@ if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
 for (const p of [BG_PNG, FINAL]) if (existsSync(p)) unlinkSync(p);
 
 console.log('[1/2] Capturing static background via Playwright...');
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch(launchOptions({ headless: true }));
 const context = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 const page = await context.newPage();
 await page.goto(`${URL}&t=${Date.now()}`, { waitUntil: 'networkidle' });

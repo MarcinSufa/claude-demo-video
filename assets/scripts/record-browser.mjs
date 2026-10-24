@@ -47,6 +47,7 @@
 //   "glow":  true   pulse a brass highlight around a click/fill/hover target
 
 import { chromium } from 'playwright';
+import { launchOptions } from './chromium_launch.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, basename } from 'node:path';
@@ -148,7 +149,7 @@ async function waitToast(page, text, timeout) {
 }
 
 console.log(`Launching Chromium for ${scene.url}`);
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch(launchOptions({ headless: true }));
 
 // P2-1: reuse the saved login session for authed scenes (make-auth.mjs wrote auth.json).
 const storageState = (scene.auth && existsSync('auth.json')) ? 'auth.json' : undefined;

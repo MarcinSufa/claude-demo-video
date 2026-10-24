@@ -102,7 +102,7 @@ fi
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
 "$PY" "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py,diorama_layout.py,make-diorama.py,diorama_plan.py,fetch-music.py,glow_check.mjs,verify-final.py} "$BUILD/"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py,diorama_layout.py,make-diorama.py,diorama_plan.py,fetch-music.py,glow_check.mjs,chromium_launch.mjs,verify-final.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
