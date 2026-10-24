@@ -166,6 +166,7 @@ demo-video/
 │   ├── record-graph.mjs
 │   ├── record-browser.mjs      ← real-app / html_mockup capture (glow/highlight selectors must match one node)
 │   ├── glow_check.mjs          ← selector validation shared with tests
+│   ├── paint_guard.mjs         ← keeps static pages repainting; blank-white first-frame check
 │   ├── display.sh
 │   └── build.sh                ← orchestrator (build | --plan)
 ├── templates/

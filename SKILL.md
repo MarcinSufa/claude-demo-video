@@ -19,7 +19,7 @@ where Playwright is installed: copy the three scripts next to a `node_modules` t
 
 ```bash
 mkdir -p /tmp/demo-capture && cd /tmp/demo-capture
-cp "${CLAUDE_SKILL_DIR}"/assets/scripts/{record-browser,glow_check,chromium_launch}.mjs .
+cp "${CLAUDE_SKILL_DIR}"/assets/scripts/{record-browser,glow_check,paint_guard,chromium_launch}.mjs .
 ln -s /path/to/app/node_modules node_modules       # reuse the app's Playwright, or:
 # npm init -y && npm install playwright && npx playwright install chromium   (pnpm works too)
 node record-browser.mjs scene.json
