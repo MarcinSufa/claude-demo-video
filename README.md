@@ -103,7 +103,8 @@ Full schema: [references/brand-config.md](./references/brand-config.md) · scene
 | **ffmpeg** | `winget install Gyan.FFmpeg` / `brew install ffmpeg` / `apt install ffmpeg` | all video/audio operations |
 | **Python 3.10+** | system | voiceover + caption + planning scripts |
 | **Node 18+ + pnpm** | system | Playwright recorder (real UI / mockups / end cards) |
-| **edge-tts** | `pip install --user edge-tts` | free Microsoft TTS |
+| **pyyaml** | `apt install python3-yaml`, or pip in a venv | brand compiler + `--plan` |
+| **edge-tts** | `python3 -m venv .venv && .venv/bin/pip install edge-tts pyyaml` (PEP 668 distros refuse `pip install --user`), then `PYTHON=$PWD/.venv/bin/python` | free Microsoft TTS |
 | **playwright** | `cd demo-video && pnpm install && pnpm exec playwright install chromium` | UI / HTML / end-card capture (always) |
 | **VHS** (Charm) | `winget install charmbracelet.vhs` / `brew install vhs` | **only** if your video has terminal/multi-agent scenes |
 
@@ -133,7 +134,7 @@ Scene captures are **cached** — edit only the voiceover and the next build reu
 
 **The layers**
 
-- **Python — the brains.** Config + orchestration math: the brand compiler (`apply-brand.py`), voiceover and caption generation, scene planning, the timing model + the *truncation gate* (`timing_util.py` / `check-timing.py`), opt-in auto-fit, per-scene duration pinning, scene-capture cache hashing, and arc-aware prerequisite checks. The pure logic is unit-tested (`tests/`, `python -m unittest discover -s tests`).
+- **Python — the brains.** Config + orchestration math: the brand compiler (`apply-brand.py`), voiceover and caption generation, scene planning, the timing model + the *truncation gate* (`timing_util.py` / `check-timing.py`), opt-in auto-fit, per-scene duration pinning, scene-capture cache hashing, and arc-aware prerequisite checks. The pure logic is unit-tested (`tests/`, `python3 -m unittest discover -s tests`).
 - **Node + Playwright — the camera.** Anything that drives a browser: capturing your real running app (`record-browser.mjs`), the HTML scenes (knowledge graph, end cards, mockups), the one-time login (`make-auth.mjs`), and the window-on-desk frame snapshot — plus a smooth fake cursor and an auto-trim for slow boot/auth splashes.
 - **ffmpeg — the editor.** Every pixel and audio operation: normalize, crossfade, speed, sidechain-duck the music under the voice, burn captions, composite the frame.
 - **Edge TTS** (free Microsoft neural voices, no API key) · **VHS / Charm** (terminal scenes) · **HTML/CSS** templates (end cards, graph, mockups) · **YAML** (the one config file).

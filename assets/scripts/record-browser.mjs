@@ -47,10 +47,12 @@
 //   "glow":  true   pulse a brass highlight around a click/fill/hover target
 
 import { chromium } from 'playwright';
+import { launchOptions } from './chromium_launch.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, basename } from 'node:path';
 import { actionLabel, glowTarget, selectorCountError } from './glow_check.mjs';
+import { KEEPALIVE_JS, isBlankWhite } from './paint_guard.mjs';
 
 const sceneFile = process.argv[2];
 if (!sceneFile || !existsSync(sceneFile)) {
@@ -128,8 +130,11 @@ async function glideTo(page, selector) {
   return { tx, ty };
 }
 
+// The selector goes through page.locator, so Playwright syntax (":has-text(...)",
+// "role=button[name=...]", "text=") works as well as CSS; the page gets the element handle.
 async function glow(page, selector) {
-  await page.evaluate((s) => window.__demoGlow && window.__demoGlow(s), selector).catch(() => {});
+  const el = await page.locator(selector).elementHandle({ timeout: 2000 }).catch(() => null);
+  if (el) await page.evaluate((node) => window.__demoGlow && window.__demoGlow(node), el).catch(() => {});
   await page.waitForTimeout(400);
 }
 
@@ -148,7 +153,7 @@ async function waitToast(page, text, timeout) {
 }
 
 console.log(`Launching Chromium for ${scene.url}`);
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch(launchOptions({ headless: true }));
 
 // P2-1: reuse the saved login session for authed scenes (make-auth.mjs wrote auth.json).
 const storageState = (scene.auth && existsSync('auth.json')) ? 'auth.json' : undefined;
@@ -186,6 +191,7 @@ if (scene.bg) {
 }
 if (WANT_CURSOR) await context.addInitScript(CURSOR_JS);
 await context.addInitScript(GLOW_JS);
+await context.addInitScript(KEEPALIVE_JS);
 
 const page = await context.newPage();
 let navOk = true;
@@ -222,10 +228,12 @@ const stamp = () => Math.max(0, (Date.now() - recStart) / 1000 - trimStart);
 async function assertGlowTarget(action) {
   const selector = glowTarget(action);
   if (!selector) return;
-  await page.waitForSelector(selector, { state: 'attached', timeout: 5000 }).catch(() => {});
-  const count = await page.evaluate((s) => {
-    try { return document.querySelectorAll(s).length; } catch { return null; }
-  }, selector);
+  let count = null;
+  try {
+    const target = page.locator(selector);
+    await target.first().waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
+    count = await target.count();
+  } catch { count = null; }   // unparseable selector
   const problem = selectorCountError(actionLabel(action), selector, count);
   if (!problem) return;
   console.error(problem);
@@ -318,6 +326,28 @@ const res = spawnSync('ffmpeg', [
   OUTPUT,
 ], { stdio: 'inherit' });
 if (res.status !== 0) { console.error('ffmpeg failed'); process.exit(1); }
+
+// Inspect only OUTPUT's first decoded frame. A dark scene that is still white
+// here likely missed its sole paint before recording began, so retry once.
+const firstFrame = spawnSync('ffmpeg', [
+  '-hide_banner', '-loglevel', 'error', '-i', OUTPUT,
+  '-vf', 'select=eq(n\\,0),signalstats,metadata=print:file=-',
+  '-frames:v', '1', '-f', 'null', '-',
+], { encoding: 'utf8' });
+const yavgMatch = `${firstFrame.stdout ?? ''}\n${firstFrame.stderr ?? ''}`
+  .match(/lavfi\.signalstats\.YAVG=([\d.]+)/);
+const firstYavg = yavgMatch ? Number(yavgMatch[1]) : null;
+if (isBlankWhite(firstYavg, scene.bg)) {
+  if (process.env.DEMO_RB_ATTEMPT !== '2') {
+    console.warn(`record-browser: first frame is blank white (YAVG ${firstYavg}) - re-recording once`);
+    const retry = spawnSync(process.execPath, [process.argv[1], sceneFile], {
+      stdio: 'inherit', env: { ...process.env, DEMO_RB_ATTEMPT: '2' },
+    });
+    process.exit(retry.status ?? 1);
+  }
+  console.error(`record-browser: first frame is blank white after retry for ${scene.url}; output: ${OUTPUT}`);
+  process.exit(3);
+}
 
 // Emit the events sidecar next to the clip (cut-clip.py reads <output>.events.json).
 // Times are relative to the trimmed OUTPUT clip. Inert unless an action set speed/zoom.

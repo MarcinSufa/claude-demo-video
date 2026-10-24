@@ -19,6 +19,23 @@ PLAN = os.environ.get("DEMO_PLAN", "scene-plan.json")
 
 CALIBRATION_CACHE = "vo-calibration.json"
 
+# Built-in scene types whose clip length is fixed by their recorder, so --plan can
+# predict the video without a `duration:` on them. endcards: record-endcards.mjs
+# records DURATION_MS = 15000.
+KNOWN_DURATIONS = {"endcards": 15.0}
+
+
+def scene_duration(entry):
+    """(seconds or None, is_default): the pinned `duration:`, else the recorder's
+    known length for that scene type, else None (indeterminate)."""
+    dur = entry.get("duration")
+    if dur is not None:
+        return float(dur), False
+    known = KNOWN_DURATIONS.get(entry.get("type"))
+    if known is not None:
+        return known, True
+    return None, False
+
 
 def _safe_float(value, default=0.0):
     """float() that tolerates missing/None/non-numeric cache values instead of
@@ -190,17 +207,21 @@ def main():
 
     raws = []
     all_pinned = True
+    any_default = False
     for s in plan:
         name = s.get("name", s["id"])
-        dur = s.get("duration")
+        dur, is_default = scene_duration(s)
         if dur is None:
             all_pinned = False
             raw_s, fin_s = "  (auto)", "        ?"
         else:
-            raws.append(float(dur))
-            raw_s = f"{float(dur):>7.2f}s"
-            fin_s = f"{float(dur)/speedup:>7.2f}s"
+            raws.append(dur)
+            any_default = any_default or is_default
+            raw_s = f"{dur:>7.2f}s" + ("*" if is_default else "")
+            fin_s = f"{dur/speedup:>7.2f}s"
         print(f"  {name:<22} {s['type']:<16} {raw_s:>9} {fin_s:>9}{mascot_note_for(s)}")
+    if any_default:
+        print("  * recorder default length (no `duration:` set)")
 
     print(f"\n  Voiceover length: {vo_est:.1f}s ({vo_source})")
 
@@ -212,7 +233,7 @@ def main():
         print(f"\n  [{verdict}] {msg}\n")
         return 0 if ok else 2
 
-    missing = [s.get("name", s["id"]) for s in plan if s.get("duration") is None]
+    missing = [s.get("name", s["id"]) for s in plan if scene_duration(s)[0] is None]
     print(f"  Predicted video length:      indeterminate "
           f"({len(missing)} scene(s) without `duration:`: {', '.join(missing)})")
     print("  Tip: add `duration:` to those scenes for deterministic alignment, "

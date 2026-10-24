@@ -9,12 +9,20 @@
 set -e
 cd "$(dirname "$0")"
 
+# Python interpreter: $PY (exported by build.sh), else $PYTHON, else the first of
+# python3 / python that actually runs. Stock Linux ships only python3; on Windows a
+# python3 Store alias can exist without working, hence the probe instead of command -v.
+if [ -z "${PY:-}" ]; then
+  for PY in "${PYTHON:-}" python3 python ""; do [ -n "$PY" ] && "$PY" -c "" 2>/dev/null && break; done
+fi
+[ -n "$PY" ] || { echo "Missing: python3 (or set PYTHON=/path/to/python)"; exit 1; }
+
 CFG="${DEMO_CONFIG:-config.json}"
 MANIFEST="${DEMO_MUSIC_MANIFEST:-music/manifest.yaml}"
 VIDEO=videos/final-rough.mp4
 
 read_music() {
-  python -c "import json,sys;print(json.load(open(sys.argv[1])).get('music',{}).get(sys.argv[2],sys.argv[3]))" "$CFG" "$1" "$2"
+  "$PY" -c "import json,sys;print(json.load(open(sys.argv[1])).get('music',{}).get(sys.argv[2],sys.argv[3]))" "$CFG" "$1" "$2"
 }
 MODE=procedural; STYLE=calm; MFILE=""
 if [ -f "$CFG" ]; then
@@ -29,7 +37,7 @@ bed_duration() {
     ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$VIDEO"
     return
   fi
-  python - "$CFG" <<'PY'
+  "$PY" - "$CFG" <<'PY'
 import json, os, sys
 import timing_util
 plan = json.load(open("scene-plan.json")) if os.path.exists("scene-plan.json") else {"scenes": []}
@@ -72,7 +80,7 @@ case "$MODE" in
     if [ ! -f "$MANIFEST" ]; then
       echo "WARNING: music manifest not found ($MANIFEST), falling back to procedural '$STYLE'"
     else
-      rc=0; python fetch-music.py --manifest "$MANIFEST" --style "$STYLE" --output music-src || rc=$?
+      rc=0; "$PY" fetch-music.py --manifest "$MANIFEST" --style "$STYLE" --output music-src || rc=$?
       if [ "$rc" -eq 0 ]; then
         fit_bed music-src
         rm -f music-src

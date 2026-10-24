@@ -3,6 +3,14 @@
 # Run from the .build working dir (after apply-brand.py + plan-scenes.py).
 set -e
 cd "$(dirname "$0")"
+
+# Python interpreter: $PY (exported by build.sh), else $PYTHON, else the first of
+# python3 / python that actually runs. Stock Linux ships only python3; on Windows a
+# python3 Store alias can exist without working, hence the probe instead of command -v.
+if [ -z "${PY:-}" ]; then
+  for PY in "${PYTHON:-}" python3 python ""; do [ -n "$PY" ] && "$PY" -c "" 2>/dev/null && break; done
+fi
+[ -n "$PY" ] || { echo "Missing: python3 (or set PYTHON=/path/to/python)"; exit 1; }
 mkdir -p videos
 
 PLAN="scene-plan.json"
@@ -14,7 +22,7 @@ run_vhs() {
 }
 
 # Iterate plan entries as TSV: id<TAB>type<TAB>mp4<TAB>extra(json)
-python - "$PLAN" > .scene-rows.tsv <<'PY'
+"$PY" - "$PLAN" > .scene-rows.tsv <<'PY'
 import json, sys
 plan = json.load(open(sys.argv[1]))["scenes"]
 for s in plan:
@@ -44,12 +52,12 @@ while IFS=$'\t' read -r id type mp4 extra <&3; do
   # matches (mascot_plan changes don't invalidate the capture layer).
   if [ "$type" != "screen_recording" ] && [ "$force" = "0" ] \
      && [ -f "$mp4.capture.mp4" ] \
-     && python scene_cache.py check "$PLAN" "$id" 2>/dev/null; then
+     && "$PY" scene_cache.py check "$PLAN" "$id" 2>/dev/null; then
     echo "  -> capture cached (unchanged)"
   else
   case "$type" in
     terminal)
-      tape=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin).get('tape',''))")
+      tape=$(echo "$extra" | "$PY" -c "import json,sys;print(json.load(sys.stdin).get('tape',''))")
       if [ -n "$tape" ]; then run_vhs "$tape"; else echo "  (custom terminal scenes need a tape; skipping)"; fi
       ;;
     graph)
@@ -65,16 +73,16 @@ while IFS=$'\t' read -r id type mp4 extra <&3; do
         -filter_complex "[0:v][1:v][2:v]hstack=inputs=3,pad=ceil(iw/2)*2:ceil(ih/2)*2" \
         -c:v libx264 -crf 20 -pix_fmt yuv420p "$mp4" ;;
     browser_capture)
-      echo "$extra" | python -c "import json,sys;json.dump(json.load(sys.stdin)['scene_spec'],open('.scene-$id.json','w'))"
+      echo "$extra" | "$PY" -c "import json,sys;json.dump(json.load(sys.stdin)['scene_spec'],open('.scene-$id.json','w'))"
       node record-browser.mjs ".scene-$id.json"
-      python cut-clip.py "$mp4" ;;        # focus: speed-ramp + zoom (no-op if unused)
+      "$PY" cut-clip.py "$mp4" ;;        # focus: speed-ramp + zoom (no-op if unused)
     html_mockup)
       # html_source already rendered into .build by apply-brand OR copied by build.sh
-      echo "$extra" | python -c "import json,sys;json.dump(json.load(sys.stdin)['scene_spec'],open('.scene-$id.json','w'))"
+      echo "$extra" | "$PY" -c "import json,sys;json.dump(json.load(sys.stdin)['scene_spec'],open('.scene-$id.json','w'))"
       node record-browser.mjs ".scene-$id.json"
-      python cut-clip.py "$mp4" ;;
+      "$PY" cut-clip.py "$mp4" ;;
     screen_recording)
-      src=$(echo "$extra" | python -c "import json,sys;print(json.load(sys.stdin)['source'])")
+      src=$(echo "$extra" | "$PY" -c "import json,sys;print(json.load(sys.stdin)['source'])")
       [ -f "$src" ] || { echo "  missing screen_recording source: $src"; exit 1; }
       if [ "$src" != "$mp4" ]; then
         # Mascot retargeted this scene to a build-local clip. Keep the pristine
@@ -89,24 +97,24 @@ while IFS=$'\t' read -r id type mp4 extra <&3; do
       # then make-before-after.py labels + composes the two clips into one scene mp4.
       echo "$extra" > ".scene-$id.json"
       for role in before after; do
-        cap=$(python -c "import json;h=json.load(open('.scene-$id.json')).get('$role',{});print(json.dumps(h['capture']) if isinstance(h,dict) and 'capture' in h else '')")
+        cap=$("$PY" -c "import json;h=json.load(open('.scene-$id.json')).get('$role',{});print(json.dumps(h['capture']) if isinstance(h,dict) and 'capture' in h else '')")
         if [ -n "$cap" ]; then
           echo "  recording $role half..."
           echo "$cap" > ".scene-$id-$role.json"
           node record-browser.mjs ".scene-$id-$role.json"
           # focus the half before it is labeled + composed (no-op without speed/zoom)
-          half_mp4=$(python -c "import json;print(json.load(open('.scene-$id-$role.json'))['output'])")
-          python cut-clip.py "$half_mp4"
+          half_mp4=$("$PY" -c "import json;print(json.load(open('.scene-$id-$role.json'))['output'])")
+          "$PY" cut-clip.py "$half_mp4"
         fi
       done
-      python make-before-after.py ".scene-$id.json" "$mp4"
+      "$PY" make-before-after.py ".scene-$id.json" "$mp4"
       rm -f ".scene-$id.json" ".scene-$id-before.json" ".scene-$id-after.json" ;;
     diorama)
       # N windows composited on a big canvas + an eased camera tour + the mascot
       # moving window-to-window (composited in canvas space by make-diorama, NOT
       # the corner overlay phase). Record any url windows like before_after halves.
       echo "$extra" > ".scene-$id.json"
-      python - "$id" <<'PY'
+      "$PY" - "$id" <<'PY'
 import importlib.util, json, os, subprocess, sys
 sid = sys.argv[1]
 dps = importlib.util.spec_from_file_location("diorama_plan", "diorama_plan.py")
@@ -118,7 +126,7 @@ for w in e["windows"]:
         cap = w["capture"]
         json.dump(cap, open(f".scene-{sid}-{w['id']}.json", "w"))
         subprocess.check_call(["node", "record-browser.mjs", f".scene-{sid}-{w['id']}.json"])
-        subprocess.check_call(["python", "cut-clip.py", cap["output"]])  # focus (no-op if unused)
+        subprocess.check_call([sys.executable, "cut-clip.py", cap["output"]])  # focus (no-op if unused)
         clips[w["id"]] = cap["output"]
     else:
         clips[w["id"]] = w["source"]
@@ -132,42 +140,42 @@ if e.get("mascot") and os.path.isdir("mascot"):
     mascot = {"keyframes": e["mascot"]["keyframes"], "frames_dir": "mascot", "fps": mfps}
 json.dump(dp.build_plan(e, clips, style, mascot=mascot), open(f".diorama-{sid}.json", "w"))
 PY
-      python make-diorama.py ".diorama-$id.json" "$mp4"
+      "$PY" make-diorama.py ".diorama-$id.json" "$mp4"
       rm -f ".scene-$id.json" ".scene-$id"-*.json ".diorama-$id.json" ;;
     *)
       echo "  unknown scene type: $type"; exit 1 ;;
   esac
 
   # P0-3: pin the clip to an explicit duration when the scene declares one.
-  dur=$(echo "$extra" | python -c "import json,sys;d=json.load(sys.stdin).get('duration');print(d if d is not None else '')")
+  dur=$(echo "$extra" | "$PY" -c "import json,sys;d=json.load(sys.stdin).get('duration');print(d if d is not None else '')")
   if [ -n "$dur" ]; then
-    python normalize-clip.py "$mp4" "$dur"
+    "$PY" normalize-clip.py "$mp4" "$dur"
   fi
 
   # Keep a pristine pre-mascot copy + record the capture fingerprint of the
   # finished (normalized) clip. screen_recording is never cached/copied.
   if [ "$type" != "screen_recording" ]; then
     cp "$mp4" "$mp4.capture.mp4"
-    python scene_cache.py save "$PLAN" "$id"
+    "$PY" scene_cache.py save "$PLAN" "$id"
   fi
   fi  # end capture phase
 
   # ── Overlay phase (mascot) ──
-  enabled=$(echo "$extra" | python -c "import json,sys;print(1 if json.load(sys.stdin).get('mascot_plan',{}).get('enabled') else 0)")
+  enabled=$(echo "$extra" | "$PY" -c "import json,sys;print(1 if json.load(sys.stdin).get('mascot_plan',{}).get('enabled') else 0)")
   if [ "$enabled" = "1" ] && [ -d mascot ]; then
     src="$mp4"; [ -f "$mp4.capture.mp4" ] && src="$mp4.capture.mp4"
-    python resolve-mascot-timeline.py "$PLAN" "$id"
+    "$PY" resolve-mascot-timeline.py "$PLAN" "$id"
     if [ "$force" = "0" ] \
-       && python scene_cache.py overlay-check "$mp4" "$src" mascot.json "$src.mascot.json" 2>/dev/null; then
+       && "$PY" scene_cache.py overlay-check "$mp4" "$src" mascot.json "$src.mascot.json" 2>/dev/null; then
       echo "  -> overlay cached"
     else
-      python overlay-mascot.py "$src" "$mp4.tmp.mp4" mascot "$src.mascot.json" --speedup "${DEMO_SPEEDUP:-1.0}"
+      "$PY" overlay-mascot.py "$src" "$mp4.tmp.mp4" mascot "$src.mascot.json" --speedup "${DEMO_SPEEDUP:-1.0}"
       if [ -f "$mp4.tmp.mp4" ]; then
         mv -f "$mp4.tmp.mp4" "$mp4"
       elif [ "$src" != "$mp4" ]; then
         cp "$src" "$mp4"   # empty timeline: ship the pristine clip, not last build's overlay
       fi
-      python scene_cache.py overlay-save "$mp4" "$src" mascot.json "$src.mascot.json"
+      "$PY" scene_cache.py overlay-save "$mp4" "$src" mascot.json "$src.mascot.json"
     fi
   elif [ -f "$mp4.capture.mp4" ]; then
     # Mascot disabled (possibly after a previous overlaid build) — ship pristine.

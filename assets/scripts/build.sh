@@ -74,15 +74,23 @@ done
 
 # ─── 0. Base prerequisites (needed just to compile + resolve the plan) ──
 step 4 "Verifying prerequisites"
-for cmd in ffmpeg ffprobe python; do command -v $cmd >/dev/null || { echo "Missing: $cmd"; exit 1; }; done
-python -c "import yaml" 2>/dev/null || { echo "Missing: pip install --user pyyaml"; exit 1; }
+for cmd in ffmpeg ffprobe; do command -v $cmd >/dev/null || { echo "Missing: $cmd"; exit 1; }; done
+# Resolve the Python interpreter ONCE and export it as $PY for every sub-script:
+# $PYTHON wins, else the first of python3 / python that actually runs. Stock Linux
+# ships only python3; on Windows a python3 Store alias can exist without working.
+if [ -z "${PY:-}" ]; then
+  for PY in "${PYTHON:-}" python3 python ""; do [ -n "$PY" ] && "$PY" -c "" 2>/dev/null && break; done
+fi
+[ -n "$PY" ] || { echo "Missing: python3 (or set PYTHON=/path/to/python)"; exit 1; }
+export PY
+"$PY" -c "import yaml" 2>/dev/null || { echo "Missing: pyyaml ($PY -m pip install pyyaml, inside a venv on PEP 668 distros)"; exit 1; }
 
 # Vendored-script drift guard (after the python prereq so a missing interpreter
-# reports "Missing: python", not a misleading drift warning). A project keeps a
+# reports "Missing: python3", not a misleading drift warning). A project keeps a
 # COPY of these scripts; a partial re-sync silently mixes old + new and fails in
 # confusing ways. Warn by default; DEMO_STRICT_SCRIPTS=1 makes drift a hard error.
 if [ -f "$SKILL_SCRIPTS/scripts_fingerprint.py" ]; then
-  if ! python "$SKILL_SCRIPTS/scripts_fingerprint.py" --check "$SKILL_SCRIPTS"; then
+  if ! "$PY" "$SKILL_SCRIPTS/scripts_fingerprint.py" --check "$SKILL_SCRIPTS"; then
     if [ "${DEMO_STRICT_SCRIPTS:-0}" = "1" ]; then
       echo "ERROR: demo-video scripts are out of sync (DEMO_STRICT_SCRIPTS=1). Re-copy assets/scripts/*."; exit 1
     fi
@@ -93,8 +101,8 @@ fi
 
 # ─── 1. Compile brand → .build/ + copy runtime scripts ──────────────────
 step 10 "Compiling brand.yaml"
-python "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
-cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py,diorama_layout.py,make-diorama.py,diorama_plan.py,fetch-music.py,glow_check.mjs,verify-final.py} "$BUILD/"
+"$PY" "$SKILL_SCRIPTS/apply-brand.py" --brand brand.yaml --templates templates --out "$BUILD"
+cp "$SKILL_SCRIPTS"/{make-vo.py,make-captions.py,make-music.sh,plan-scenes.py,build-scenes.sh,assemble.sh,mix-final.sh,burn-captions.sh,record-frame.mjs,record-graph.mjs,record-endcards.mjs,record-browser.mjs,cut-clip.py,make-before-after.py,make-auth.mjs,timing_util.py,check-timing.py,dry-run-plan.py,normalize-clip.py,scene_cache.py,prereqs.py,autofit.py,mascot_data.py,render-mascot.py,resolve-mascot-timeline.py,overlay-mascot.py,mascot_brand.py,shade_sprite.py,import-spritesheet.py,gen-pixellab.py,diorama_layout.py,make-diorama.py,diorama_plan.py,fetch-music.py,glow_check.mjs,paint_guard.mjs,chromium_launch.mjs,verify-final.py} "$BUILD/"
 mkdir -p "$BUILD/videos"
 
 cd "$BUILD"
@@ -106,14 +114,14 @@ export DEMO_MUSIC_MANIFEST="$SKILL_ASSETS/music/manifest.yaml"
 # against it — same as the backdrop handling above.
 export DEMO_ROOT="$ROOT"
 # Mascot overlay phase needs the global speedup to time its timeline correctly.
-export DEMO_SPEEDUP=$(python -c "import json;print(json.load(open('config.json')).get('scenes',{}).get('speedup',1.0))")
+export DEMO_SPEEDUP=$("$PY" -c "import json;print(json.load(open('config.json')).get('scenes',{}).get('speedup',1.0))")
 
 # Resolve the scene plan early (cheap) — drives both --plan and the arc-aware gate.
-python plan-scenes.py
+"$PY" plan-scenes.py
 
 # ─── --plan: dry run (estimate VO + video length), then exit ────────────
 if [ "$PLAN_ONLY" = "1" ]; then
-  rc=0; python dry-run-plan.py || rc=$?
+  rc=0; "$PY" dry-run-plan.py || rc=$?
   exit $rc
 fi
 
@@ -128,22 +136,22 @@ fi
 #   grid (default) — hand-authored pixel-grid mascot.json -> (optional shade) -> render
 #   sheet          — import an external sprite sheet + Aseprite-style frames JSON
 #   pixellab       — generate frames via the PixelLab API (paid; needs PIXELLAB_API_KEY)
-MASCOT_ENABLED=$(python -c "import json;m=json.load(open('config.json')).get('mascot',{});print(1 if m.get('enabled', bool(m)) else 0)")
+MASCOT_ENABLED=$("$PY" -c "import json;m=json.load(open('config.json')).get('mascot',{});print(1 if m.get('enabled', bool(m)) else 0)")
 if [ "$MASCOT_ENABLED" = "1" ]; then
   # Clean slate every run: a prior build's sprites must never linger and overlay
   # silently when this run's source is skipped/missing (would render the wrong
   # — or a "mascot-less" — scene with stale grid frames). Each source repopulates.
   rm -rf mascot mascot.json
-  MASCOT_SOURCE=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('source','grid'))")
+  MASCOT_SOURCE=$("$PY" -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('source','grid'))")
   case "$MASCOT_SOURCE" in
     grid|sheet|pixellab) ;;
     *) echo "WARNING: unknown mascot.source '$MASCOT_SOURCE' - using grid"; MASCOT_SOURCE=grid ;;
   esac
   if [ "$MASCOT_SOURCE" = "sheet" ]; then
-    SHEET=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('sheet',''))")
-    TAGS=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('tags',''))")
+    SHEET=$("$PY" -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('sheet',''))")
+    TAGS=$("$PY" -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('tags',''))")
     if [ -f "$ROOT/$SHEET" ] && [ -f "$ROOT/$TAGS" ]; then
-      python import-spritesheet.py "$ROOT/$SHEET" "$ROOT/$TAGS" mascot \
+      "$PY" import-spritesheet.py "$ROOT/$SHEET" "$ROOT/$TAGS" mascot \
         && echo "  mascot: imported sprite sheet ($SHEET)" \
         || { echo "WARNING: sprite-sheet import failed - building mascot-less"; rm -rf mascot; }
     else
@@ -152,10 +160,10 @@ if [ "$MASCOT_ENABLED" = "1" ]; then
   elif [ "$MASCOT_SOURCE" = "pixellab" ]; then
     # Key resolution (env var or ~/.pixellab/credentials.json) is gen-pixellab's
     # job — it fails soft with a clear message if absent, caught here as mascot-less.
-    PROMPT=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('prompt',''))")
-    NF=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('n_frames',6))")
+    PROMPT=$("$PY" -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('prompt',''))")
+    NF=$("$PY" -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('n_frames',6))")
     if [ -n "$PROMPT" ]; then
-      python gen-pixellab.py mascot --prompt "$PROMPT" --n-frames "$NF" \
+      "$PY" gen-pixellab.py mascot --prompt "$PROMPT" --n-frames "$NF" \
         && echo "  mascot: generated via PixelLab" \
         || { echo "WARNING: pixellab generation failed (no key / API error) - building mascot-less"; rm -rf mascot; }
     else
@@ -166,7 +174,7 @@ if [ "$MASCOT_ENABLED" = "1" ]; then
     if [ -f "$ROOT/mascot.json" ]; then
       cp "$ROOT/mascot.json" mascot.json
     else
-      CHAR=$(python -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('character','octopus'))")
+      CHAR=$("$PY" -c "import json;print(json.load(open('config.json')).get('mascot',{}).get('character','octopus'))")
       if [ -f "$SKILL_ASSETS/mascots/$CHAR.json" ]; then
         cp "$SKILL_ASSETS/mascots/$CHAR.json" mascot.json
       else
@@ -176,21 +184,21 @@ if [ "$MASCOT_ENABLED" = "1" ]; then
     if [ -f mascot.json ]; then
       # Optional procedural shading (mascot.shade: true) — rim light + shadow +
       # eye catch-lights on a flat character, no art rework. In-place, reproducible.
-      MASCOT_SHADE=$(python -c "import json;print(1 if json.load(open('config.json')).get('mascot',{}).get('shade') else 0)")
+      MASCOT_SHADE=$("$PY" -c "import json;print(1 if json.load(open('config.json')).get('mascot',{}).get('shade') else 0)")
       if [ "$MASCOT_SHADE" = "1" ]; then
-        python shade_sprite.py mascot.json mascot.shaded.json && mv -f mascot.shaded.json mascot.json \
+        "$PY" shade_sprite.py mascot.json mascot.shaded.json && mv -f mascot.shaded.json mascot.json \
           && echo "  mascot: procedural shading applied" \
           || echo "WARNING: mascot shading failed - using flat mascot"
       fi
-      MASCOT_SCALE=$(python -c "import json;s=json.load(open('config.json')).get('mascot',{}).get('scale');print(s if s else '')")
-      python render-mascot.py mascot.json mascot ${MASCOT_SCALE:+--scale "$MASCOT_SCALE"} \
+      MASCOT_SCALE=$("$PY" -c "import json;s=json.load(open('config.json')).get('mascot',{}).get('scale');print(s if s else '')")
+      "$PY" render-mascot.py mascot.json mascot ${MASCOT_SCALE:+--scale "$MASCOT_SCALE"} \
         || { echo "WARNING: mascot render failed - building mascot-less"; rm -rf mascot mascot.json; }
     fi
   fi
 fi
 
 # Rough ETA from the scene count (TTS + captures + assemble/encode dominate).
-N_SCENES=$(python -c "import json;print(len(json.load(open('scene-plan.json'))['scenes']))")
+N_SCENES=$("$PY" -c "import json;print(len(json.load(open('scene-plan.json'))['scenes']))")
 EST_LO=$(( (45 + N_SCENES * 18) / 60 )); EST_HI=$(( (75 + N_SCENES * 30) / 60 + 1 ))
 echo "  Estimated build time: ~${EST_LO}-${EST_HI} min ($N_SCENES scenes). Live progress below."
 
@@ -200,14 +208,14 @@ command -v node >/dev/null || { echo "Missing: node"; exit 1; }
 python -c "import edge_tts" 2>/dev/null || { echo "Missing: pip install --user edge-tts"; exit 1; }
 [ -d "$ROOT/node_modules/playwright" ] || { echo "Missing: pnpm add playwright && pnpm exec playwright install chromium"; exit 1; }
 # VHS/Docker is needed ONLY for terminal / multi-agent scenes.
-if python prereqs.py needs-vhs scene-plan.json; then
+if "$PY" prereqs.py needs-vhs scene-plan.json; then
   command -v vhs >/dev/null || command -v docker >/dev/null || {
     echo "Missing: VHS (winget install charmbracelet.vhs) or Docker — required for terminal/multi-agent scenes"; exit 1; }
 fi
 
 # ─── node_modules + backdrop into .build/ ───────────────────────────────
 [ -e node_modules ] || ln -s "$ROOT/node_modules" node_modules 2>/dev/null || cp -r "$ROOT/node_modules" node_modules
-BACKDROP_SRC="$(python -c "import json;print(json.load(open('config.json'))['subs']['backdrop_source'])")"
+BACKDROP_SRC="$("$PY" -c "import json;print(json.load(open('config.json'))['subs']['backdrop_source'])")"
 if [[ "$BACKDROP_SRC" == http* ]]; then
   echo "  downloading backdrop..."
   curl -L -s -o videos/backdrop.jpg "$BACKDROP_SRC" || echo "  (backdrop download failed — frame uses bg color)"
@@ -219,31 +227,31 @@ fi
 
 # Local server for Playwright HTML scenes (serves .build/)
 if ! curl -s -o /dev/null http://localhost:8765/; then
-  python -m http.server 8765 >/dev/null 2>&1 &
+  "$PY" -m http.server 8765 >/dev/null 2>&1 &
   SERVER_PID=$!
   trap "kill $SERVER_PID 2>/dev/null || true" EXIT
   sleep 1
 fi
 
 # ─── 2-8. Pipeline ──────────────────────────────────────────────────────
-step 26 "Voiceover (Edge TTS)";     python make-vo.py
-step 34 "Captions";                 python make-captions.py
+step 26 "Voiceover (Edge TTS)";     "$PY" make-vo.py
+step 34 "Captions";                 "$PY" make-captions.py
 # P2-1: log in once if an auth block is configured (authed scenes reuse the session)
-if [ "$(python -c "import json;print(bool(json.load(open('config.json')).get('auth',{}).get('login_url')))")" = "True" ]; then
+if [ "$("$PY" -c "import json;print(bool(json.load(open('config.json')).get('auth',{}).get('login_url')))")" = "True" ]; then
   step 46 "Auth login (storageState)"; node make-auth.mjs
 fi
 step 52 "Recording scenes";         DEMO_NO_CACHE="$NO_CACHE" DEMO_ONLY="$ONLY" bash build-scenes.sh
 # P0-1 (opt-in): fit playback speed to the voiceover length
-if [ "$(python -c "import json;print(json.load(open('config.json')).get('scenes',{}).get('autofit',False))")" = "True" ]; then
-  step 76 "Auto-fit speed to voiceover"; python autofit.py
+if [ "$("$PY" -c "import json;print(json.load(open('config.json')).get('scenes',{}).get('autofit',False))")" = "True" ]; then
+  step 76 "Auto-fit speed to voiceover"; "$PY" autofit.py
 fi
 step 80 "Assembling crossfade";     bash assemble.sh
 # Always regenerate, after assemble so the bed is fitted to the real video length.
 step 84 "Music bed";                bash make-music.sh
 step 90 "Mixing audio + captions";  bash mix-final.sh; bash burn-captions.sh
-step 94 "Verifying final";          python verify-final.py videos/final-with-captions.mp4 --rough videos/final-rough.mp4 \
-  --threshold "$(python -c "import json;print(json.load(open('config.json')).get('verify',{}).get('white_threshold',120))")" \
-  --margin "$(python -c "import json;print(json.load(open('config.json')).get('verify',{}).get('flash_margin',60))")"
+step 94 "Verifying final";          "$PY" verify-final.py videos/final-with-captions.mp4 --rough videos/final-rough.mp4 \
+  --threshold "$("$PY" -c "import json;print(json.load(open('config.json')).get('verify',{}).get('white_threshold',120))")" \
+  --margin "$("$PY" -c "import json;print(json.load(open('config.json')).get('verify',{}).get('flash_margin',60))")"
 step 96 "Compositing frame";        node record-frame.mjs
 step 100 "Done"
 

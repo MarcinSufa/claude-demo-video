@@ -4,12 +4,20 @@
 set -e
 cd "$(dirname "$0")"
 
+# Python interpreter: $PY (exported by build.sh), else $PYTHON, else the first of
+# python3 / python that actually runs. Stock Linux ships only python3; on Windows a
+# python3 Store alias can exist without working, hence the probe instead of command -v.
+if [ -z "${PY:-}" ]; then
+  for PY in "${PYTHON:-}" python3 python ""; do [ -n "$PY" ] && "$PY" -c "" 2>/dev/null && break; done
+fi
+[ -n "$PY" ] || { echo "Missing: python3 (or set PYTHON=/path/to/python)"; exit 1; }
+
 # Config-driven values (config.json lives alongside in the .build working dir)
 CFG="${DEMO_CONFIG:-config.json}"
 if [ -f "$CFG" ]; then
-  BG="0x$(python -c "import json;print(json.load(open('$CFG'))['subs']['palette_bg'].lstrip('#'))")"
-  XF=$(python -c "import json;print(json.load(open('$CFG'))['subs']['crossfade'])")
-  SPEEDUP=$(python -c "import json;print(json.load(open('$CFG'))['subs']['speedup'])")
+  BG="0x$("$PY" -c "import json;print(json.load(open('$CFG'))['subs']['palette_bg'].lstrip('#'))")"
+  XF=$("$PY" -c "import json;print(json.load(open('$CFG'))['subs']['crossfade'])")
+  SPEEDUP=$("$PY" -c "import json;print(json.load(open('$CFG'))['subs']['speedup'])")
 else
   BG="0x0a0705"; XF=0.6; SPEEDUP=1.20
 fi
@@ -38,7 +46,7 @@ PLAN="${DEMO_PLAN:-scene-plan.json}"
 [ -f "$PLAN" ] || { echo "Missing $PLAN — run plan-scenes.py first"; exit 1; }
 
 # Ordered list of source mp4 paths
-mapfile -t SCENE_MP4S < <(python -c "import json;[print(s['mp4']) for s in json.load(open('$PLAN'))['scenes']]" | tr -d '\r')
+mapfile -t SCENE_MP4S < <("$PY" -c "import json;[print(s['mp4']) for s in json.load(open('$PLAN'))['scenes']]" | tr -d '\r')
 N=${#SCENE_MP4S[@]}
 [ "$N" -ge 2 ] || { echo "Need >=2 scenes, got $N"; exit 1; }
 
@@ -54,7 +62,7 @@ done
 
 echo "[2/2] Cross-fade chain (dynamic, $N scenes)"
 # Build + run the xfade chain in python (clean offset math for any N)
-python - "$XF" "$NORM_DIR" "$N" videos/final-rough.mp4 <<'PY'
+"$PY" - "$XF" "$NORM_DIR" "$N" videos/final-rough.mp4 <<'PY'
 import subprocess, sys
 XF = float(sys.argv[1]); NORM = sys.argv[2]; N = int(sys.argv[3]); OUT = sys.argv[4]
 

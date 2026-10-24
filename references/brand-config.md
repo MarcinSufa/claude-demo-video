@@ -102,7 +102,7 @@ typography:
 ```
 
 **Pairings that work**:
-- `Newsreader` + `Geist` + `JetBrains Mono` (editorial, scholarly — ExoVault Vellum style)
+- `Newsreader` + `Geist` + `JetBrains Mono` (editorial, scholarly — the Vellum look of the default palette)
 - `Inter` + `Inter` + `JetBrains Mono` (modern, neutral)
 - `Crimson Pro` + `IBM Plex Sans` + `IBM Plex Mono` (academic)
 - `Instrument Serif` + `Manrope` + `Fira Code` (warm, friendly)

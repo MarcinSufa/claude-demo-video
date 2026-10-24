@@ -134,7 +134,7 @@ def build_substitutions(brand):
     scenes = brand.get("scenes", {})
     cards = brand.get("end_cards", {})
 
-    # Defaults mirror the ExoVault Vellum reference
+    # Default palette: the dark warm "Vellum" theme the skill ships with
     pal_defaults = {
         "bg": "#0a0705", "fg": "#dcd7cf", "fg_lo": "#a9a49c", "fg_faint": "#7a736c",
         "accent": "#dbaf71", "rule": "#29231f", "end_card_bg": "#1e1714",

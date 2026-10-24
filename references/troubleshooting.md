@@ -30,28 +30,26 @@ ffprobe -v error -show_entries stream=codec_type,duration -of default=noprint_wr
 
 **Most likely:** scene durations changed but VO pauses still target old timing.
 
-**Diagnostic:**
+**Diagnostic** (run from the project root after a build; works for any scene count):
 ```bash
-python -c "
+cd .build && python3 - <<'PY'
 import json, subprocess
-data = json.load(open('.build/vo-words.json'))
-durs = []
-for s in ['s1','s2','s3','s4','s5','s6','s7']:
-    d = subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',f'.build/.normalized/{s}.mp4']).decode().strip()
-    durs.append(float(d))
-XF = 0.6
+data = json.load(open('vo-words.json'))
+plan = json.load(open('scene-plan.json'))['scenes']
+XF = float(json.load(open('config.json'))['subs']['crossfade'])
+durs = [float(subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', f'.normalized/s{i + 1}.mp4']).decode().strip())
+        for i in range(len(plan))]
 starts = [0.0]
 for d in durs[:-1]:
     starts.append(starts[-1] + d - XF)
-ends = [starts[i] + durs[i] for i in range(7)]
-labels = ['hero','typing','amnesia','GRAPH','recall','multi','endcards']
-scenes = list(zip(starts, ends, labels))
+scenes = [(st, st + d, s.get('name', s['id'])) for st, d, s in zip(starts, durs, plan)]
 def scn(t):
-    matches = [n for s,e,n in scenes if s <= t < e]
+    matches = [n for a, b, n in scenes if a <= t < b]
     return matches[-1] if matches else 'OUT'
 for line in data['lines']:
-    print(f\"{line['line_start']:5.1f}s [{scn(line['line_start']):11}] {line['text']}\")
-"
+    print(f"{line['line_start']:5.1f}s [{scn(line['line_start']):11}] {line['text']}")
+PY
 ```
 
 If any line lands in wrong scene, adjust `pause_after` in `brand.yaml` for the line BEFORE it, then rebuild.
@@ -93,13 +91,13 @@ grep "recordVideo" scripts/record-frame.mjs        # if present → OLD approach
 
 **Most likely:** old `voiceover` in brand.yaml.
 
-**Fix:** Edit `brand.yaml`, find the line, remove the unwanted word, run `bash build.sh --force-vo`.
+**Fix:** Edit `brand.yaml`, find the line, remove the unwanted word, run `bash scripts/build.sh` (the voiceover is regenerated on every build).
 
 ### Captions appear with wrong timing
 
 **Most likely:** `vo.mp3` was regenerated but `captions.ass` wasn't.
 
-**Fix:** `rm captions.ass && python scripts/make-captions.py && bash scripts/burn-captions.sh`
+**Fix:** `cd .build && rm captions.ass && python3 make-captions.py && bash burn-captions.sh`
 
 ### "Multi-agent" displayed instead of "MULTI-AGENT" in spec line
 
@@ -134,19 +132,31 @@ Or install via WSL: `sudo apt install vhs`.
 
 ### `edge-tts` command not found
 
-Edge TTS installed via `pip install --user edge-tts` may not be on PATH. Use module form:
+Edge TTS installed with pip may not be on PATH. Use module form:
 ```bash
-python -m edge_tts --voice en-US-AndrewNeural --text "hello" --write-media test.mp3
+python3 -m edge_tts --voice en-US-AndrewNeural --text "hello" --write-media test.mp3
 ```
 
 The skill's `make-vo.py` uses the Python module directly, so PATH doesn't matter.
 
-### Playwright "Executable doesn't exist"
+### Playwright "Executable doesn't exist" (e.g. `chromium_headless_shell-1208`)
 
+Each Playwright release pins one browser build. Either install the build it wants:
 ```bash
-cd demo-video
-pnpm exec playwright install chromium
+npx playwright install chromium        # or: pnpm exec playwright install chromium
 ```
+or point the scripts at a Chromium/Chrome you already have. Every `chromium.launch`
+in the skill reads `DEMO_CHROMIUM_PATH`, then `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`:
+```bash
+ls ~/.cache/ms-playwright/             # installed builds
+export DEMO_CHROMIUM_PATH=~/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell
+```
+Do not patch `executablePath` into the scripts by hand; a re-sync drops the patch.
+
+### Chromium: "error while loading shared libraries: libnspr4.so" (Linux)
+
+The browser's system libraries are missing. With root: `sudo npx playwright install-deps chromium`.
+Without root, extract the packages somewhere and point `LD_LIBRARY_PATH` at their `usr/lib/x86_64-linux-gnu`.
 
 ### Final video larger than 10 MB
 

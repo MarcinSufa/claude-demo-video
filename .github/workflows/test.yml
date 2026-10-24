@@ -32,6 +32,28 @@ jobs:
         # Light tier: config parse, scene-plan resolution and the drift guard.
         run: bash tests/smoke_build.sh
 
+  no-python:
+    # Stock Linux ships python3 only. The scripts must resolve python3 themselves,
+    # so this job deletes every `python` on PATH and uses the distro python3.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove `python` from PATH
+        run: |
+          IFS=: read -ra dirs <<< "$PATH"
+          for d in "${dirs[@]}"; do
+            if [ -e "$d/python" ]; then echo "removing $d/python"; sudo rm -f "$d/python"; fi
+          done
+          hash -r
+          if command -v python; then echo "python still on PATH"; exit 1; fi
+          python3 --version
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg python3-yaml
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests
+      - name: Integration smoke (plan tier)
+        run: bash tests/smoke_build.sh
+
   smoke-full:
     # Full-render tier: installs the heavy toolchain and renders a real video,
     # so mockup-copy / arg-skew / blank-frame regressions are caught in CI too.

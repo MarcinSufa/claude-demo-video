@@ -144,7 +144,8 @@ Same engine as the built-in `graph`/`endcards` scenes. Use this to demo a featur
 real app doesn't have yet **without adding a throwaway view to your codebase**. Start
 from `mockups/example.html` (scaffolded by `init`). The recorder injects your
 `palette.bg` before first paint, so a mockup that forgets an inline background won't
-record as a white flash.
+record as a white flash. The recorder keeps the page repainting and re-records once if
+the first frame is still blank white.
 
 ### Warming up real routes (`browser_capture`)
 

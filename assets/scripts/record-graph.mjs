@@ -1,17 +1,13 @@
 // Records graph.html as a 15s 1280x720 video using Playwright.
 // Output: ./videos/graph.webm  →  converted to graph.mp4 via ffmpeg.
 //
-// Setup (once):
-//   cd /c/tmp/exovault-demo
-//   npm init -y
-//   npm install playwright
-//   npx playwright install chromium
-//
-// Run:
-//   1) python -m http.server 8765   (in another terminal, in this folder)
+// build.sh runs this from the .build dir. To run it by hand there:
+//   1) python3 -m http.server 8765   (in another terminal, in .build)
 //   2) node record-graph.mjs
+// Needs playwright in node_modules (npx playwright install chromium) and ffmpeg.
 
 import { chromium } from 'playwright';
+import { launchOptions } from './chromium_launch.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,10 +26,10 @@ for (const stale of ['graph.webm', 'graph.mp4']) {
 }
 
 console.log('Launching Chromium...');
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOptions({
   headless: true,
   args: ['--disable-web-security', '--disable-blink-features=AutomationControlled'],
-});
+}));
 const context = await browser.newContext({
   viewport: { width: W, height: H },
   deviceScaleFactor: 2, // crisp 2x rendering
