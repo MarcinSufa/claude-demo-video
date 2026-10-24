@@ -1,6 +1,11 @@
 # Pipeline workflow — internals
 
-The /demo-video build runs 7 sequential steps. Each step has a cache check and skips if up-to-date.
+`bash scripts/build.sh` runs everything inside `.build/`, in this order:
+`apply-brand.py` (brand.yaml → config + templates) → `plan-scenes.py` (scene-plan.json;
+`--plan` stops here after `dry-run-plan.py`) → mascot frames (if enabled) → the 7 media steps
+below, with `build-scenes.sh` (records every scene by type), the optional auth login and
+`autofit.py` before step 3, and `verify-final.py` before step 7.
+Only scene clips are cached (see "Cache behavior"); the other steps re-run on every build.
 
 ## Dependency graph
 
@@ -44,7 +49,7 @@ brand.yaml
 - For each scene mp4, ffmpeg-normalizes to 1920×1080@30fps with `setpts=PTS/SPEEDUP`
 - Reads ACTUAL durations via ffprobe (don't hardcode!)
 - Computes xfade offsets cumulatively
-- Chains 6 xfade transitions
+- Chains N-1 xfade transitions for N scenes (offset math in embedded Python, any N)
 - Output: `videos/final-rough.mp4` (no audio)
 
 ### 4. `make-music.sh`: Music bed
@@ -79,11 +84,13 @@ brand.yaml
 
 ## Cache behavior
 
-Each step checks if its output is newer than its inputs. To force re-run:
+Voiceover, captions, assemble, music, mix and the frame re-run on every build.
+Recorded scene clips are cached per scene (`scene_cache.py`) and reused when the scene spec is unchanged:
 ```bash
-bash build.sh --force-vo                    # Re-run from VO down
-rm -rf .normalized .vo && bash build.sh     # Nuclear: re-run everything
-rm music.mp3 && bash build.sh               # Re-generate music
+bash scripts/build.sh                       # reuse cached scene clips
+bash scripts/build.sh --only c2             # re-record scene c2, reuse the rest
+bash scripts/build.sh --no-cache            # re-record every scene
+rm -rf .build && bash scripts/build.sh      # nuclear: start from scratch
 ```
 
 ## Where time is spent
@@ -92,7 +99,7 @@ On a typical run (clean cache):
 - `make-vo.py` ~12s (Edge TTS streaming, network-bound)
 - `make-captions.py` ~0.1s
 - `make-music.sh` ~3s
-- `assemble.sh` ~25s (7 normalize + xfade chain encoding)
+- `assemble.sh` ~25s for 7 scenes (normalize each + xfade chain encoding)
 - `mix-final.sh` ~8s
 - `burn-captions.sh` ~12s (re-encode video with libass)
 - `record-frame.mjs` ~15s (Playwright launch + ffmpeg overlay)

@@ -1,4 +1,4 @@
-// Records endcards.html as a 10s 1920x1080 video using Playwright.
+// Records endcards.html as a 15s 1920x1080 video using Playwright.
 // (Higher res than graph.mp4 because end cards are typography-heavy.)
 //
 // Run: node record-endcards.mjs   (server must be on :8765)
@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync, statSync } 
 import { join } from 'node:path';
 
 const W = 1920, H = 1080;
-const DURATION_MS = 15000;  // extra hold for "exovault dot co" VO line
+const DURATION_MS = 15000;  // hold long enough for the closing VO line
 const URL = 'http://localhost:8765/endcards.html';
 const OUT_DIR = './videos';
 

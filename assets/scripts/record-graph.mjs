@@ -1,15 +1,10 @@
 // Records graph.html as a 15s 1280x720 video using Playwright.
 // Output: ./videos/graph.webm  →  converted to graph.mp4 via ffmpeg.
 //
-// Setup (once):
-//   cd /c/tmp/exovault-demo
-//   npm init -y
-//   npm install playwright
-//   npx playwright install chromium
-//
-// Run:
-//   1) python -m http.server 8765   (in another terminal, in this folder)
+// build.sh runs this from the .build dir. To run it by hand there:
+//   1) python3 -m http.server 8765   (in another terminal, in .build)
 //   2) node record-graph.mjs
+// Needs playwright in node_modules (npx playwright install chromium) and ffmpeg.
 
 import { chromium } from 'playwright';
 import { launchOptions } from './chromium_launch.mjs';

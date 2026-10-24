@@ -56,7 +56,7 @@ def s_to_srt(seconds):
 def build_ass(data):
     """Build karaoke ASS with per-word \\k highlight from line-level timing."""
     header = f"""[Script Info]
-Title: ExoVault Demo Captions
+Title: Demo Video Captions
 ScriptType: v4.00+
 PlayResX: 1920
 PlayResY: 1080
