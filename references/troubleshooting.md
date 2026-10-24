@@ -141,12 +141,24 @@ python -m edge_tts --voice en-US-AndrewNeural --text "hello" --write-media test.
 
 The skill's `make-vo.py` uses the Python module directly, so PATH doesn't matter.
 
-### Playwright "Executable doesn't exist"
+### Playwright "Executable doesn't exist" (e.g. `chromium_headless_shell-1208`)
 
+Each Playwright release pins one browser build. Either install the build it wants:
 ```bash
-cd demo-video
-pnpm exec playwright install chromium
+npx playwright install chromium        # or: pnpm exec playwright install chromium
 ```
+or point the scripts at a Chromium/Chrome you already have. Every `chromium.launch`
+in the skill reads `DEMO_CHROMIUM_PATH`, then `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`:
+```bash
+ls ~/.cache/ms-playwright/             # installed builds
+export DEMO_CHROMIUM_PATH=~/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell
+```
+Do not patch `executablePath` into the scripts by hand; a re-sync drops the patch.
+
+### Chromium: "error while loading shared libraries: libnspr4.so" (Linux)
+
+The browser's system libraries are missing. With root: `sudo npx playwright install-deps chromium`.
+Without root, extract the packages somewhere and point `LD_LIBRARY_PATH` at their `usr/lib/x86_64-linux-gnu`.
 
 ### Final video larger than 10 MB
 
