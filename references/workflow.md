@@ -206,3 +206,16 @@ it's current). **Migration:** projects scaffolded before this guard existed lack
 - **CI** — `.github/workflows/test.yml`: unit tests, shell syntax checks and the `--plan`
   smoke tier (with setup-python, and again with no `python` on PATH), plus a full-render
   smoke job.
+
+## Maintenance
+
+- `python3 -m unittest discover -s tests` and `bash tests/smoke_build.sh` (plan tier always; a full
+  render when node + edge-tts + a Playwright `node_modules` are present). CI runs both, plus a
+  job with no `python` on PATH.
+- After changing any runtime script, refresh the stamp:
+  `python3 assets/scripts/scripts_fingerprint.py --write assets/scripts` (a unit test enforces it).
+- **Vendored copies drift.** Each project keeps a copy of the scripts in `demo-video/scripts/`;
+  `build.sh` warns when that set is inconsistent (`DEMO_STRICT_SCRIPTS=1` makes it fatal).
+  A copy without `scripts/VERSION` predates the guard and skips the check silently:
+  re-copy **all** of `assets/scripts/*` (and `assets/music/`) after every skill update.
+  Details: *Vendored scripts* above.
