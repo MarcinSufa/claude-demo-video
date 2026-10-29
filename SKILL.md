@@ -82,27 +82,9 @@ drift, silent audio or a white flash. Step list and internals: `references/workf
 
 ## Prerequisites
 
-| Tool | Linux (apt) | macOS / Windows | Needed for |
-|---|---|---|---|
-| **ffmpeg** | `sudo apt install ffmpeg` | `brew install ffmpeg` / `winget install Gyan.FFmpeg` | everything |
-| **Python 3.10+** | `python3` (preinstalled) | system | full film (`--plan` too) |
-| **pyyaml** | `sudo apt install python3-yaml`, or pip in a venv | pip | full film (`--plan` too) |
-| **edge-tts** | pip in a venv (below) | `pip install edge-tts` | voiceover |
-| **Node 18+** | nodesource / nvm | system | Playwright recorder |
-| **playwright** | `cd demo-video && npm install && npx playwright install chromium` (pnpm works too) | same | quick capture + every film |
-| **VHS** (Charm) | `sudo apt install vhs` (Charm apt repo) | `brew install vhs` / `winget install charmbracelet.vhs` | **only** terminal/multi-agent scenes |
-| **Docker** (alt) | system | system | VHS via container |
-
-Python packages: `pip install --user` fails on PEP 668 distros (Debian/Ubuntu "externally-managed-environment"). Use a venv:
-
-```bash
-python3 -m venv .venv && .venv/bin/pip install pyyaml edge-tts
-PYTHON=$PWD/.venv/bin/python bash scripts/build.sh     # or: source .venv/bin/activate
-```
-
-The scripts use `$PYTHON`, else `python3`, else `python`. `build.sh` checks all prerequisites
-(arc-aware: VHS only when needed) and prints the install command for anything missing.
-Pillow is **not** a dependency: inspect frames with ffmpeg (see Quick capture), not PIL.
+ffmpeg and Node/Playwright are needed for all captures. Full films need Python 3.10+ and pyyaml;
+voice needs edge-tts. VHS is only for terminal scenes. `build.sh` checks prerequisites and prints
+install commands. Full table and venv recipe: `references/setup.md`.
 
 ## Configuration — `brand.yaml`
 
@@ -182,21 +164,14 @@ After `build` completes, the user has:
 
 ## Testing & maintenance
 
-- `python3 -m unittest discover -s tests` and `bash tests/smoke_build.sh` (plan tier always; a full
-  render when node + edge-tts + a Playwright `node_modules` are present). CI runs both, plus a
-  job with no `python` on PATH.
-- After changing any runtime script, refresh the stamp:
-  `python3 assets/scripts/scripts_fingerprint.py --write assets/scripts` (a unit test enforces it).
-- **Vendored copies drift.** Each project keeps a copy of the scripts in `demo-video/scripts/`;
-  `build.sh` warns when that set is inconsistent (`DEMO_STRICT_SCRIPTS=1` makes it fatal).
-  A copy without `scripts/VERSION` predates the guard and skips the check silently:
-  re-copy **all** of `assets/scripts/*` (and `assets/music/`) after every skill update.
-  Details: `references/workflow.md` → *Vendored scripts*.
+Re-copy all of `assets/scripts/*` and `assets/music/` after every skill update. `build.sh` warns on
+drift; `DEMO_STRICT_SCRIPTS=1` makes it fatal.
 
 ## References (read on demand)
 
 - `references/scene-config.md` — every scene type and option (`browser_capture` actions, auth, `duration`, `clip`, autofit). Read when writing `scenes:` or a quick-capture scene.json beyond the minimal example.
 - `references/brand-config.md` — full `brand.yaml` schema, voices, music, and VO writing principles (short sentences, ~115 wpm). Read when filling in `brand.yaml` or writing the voiceover.
+- `references/setup.md`: install table, PEP 668 venv recipe, and Python resolution. Read when setting up or troubleshooting prerequisites.
 - `references/workflow.md` — what each pipeline step does, caching, file map, vendored scripts. Read when a step fails or before editing a script.
 - `references/troubleshooting.md` — white flashes, sync drift, audio truncation, browser build/library errors. Read when a build or capture misbehaves.
 - `references/gotchas.md`, `references/before-after.md`, `references/diorama.md`, `references/mascot.md` — see *Special scenes* above for when.
