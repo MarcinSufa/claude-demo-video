@@ -12,16 +12,10 @@ import tempfile
 import threading
 import unittest
 
+from tests.live_browser import requires_live_browser
+
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..", "assets", "scripts")
 NODE = shutil.which("node")
-
-
-def _playwright_available():
-    if not NODE or not shutil.which("ffmpeg"):
-        return False
-    probe = subprocess.run([NODE, "-e", "require.resolve('playwright')"], cwd=SCRIPTS,
-                           capture_output=True)
-    return probe.returncode == 0
 
 
 LATE = """<!doctype html><html><body style="background:#100c0a">
@@ -41,7 +35,7 @@ NAMED = """<!doctype html><html><body style="background:#100c0a">
 }, 0));</script></body></html>"""
 
 
-@unittest.skipUnless(_playwright_available(), "needs node + playwright + ffmpeg")
+@requires_live_browser
 class GlowValidation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

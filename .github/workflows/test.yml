@@ -74,6 +74,10 @@ jobs:
         run: |
           npm install playwright
           npx playwright install --with-deps chromium
+      - name: Live browser tests
+        env:
+          DEMO_REQUIRE_LIVE: "1"
+        run: python -m unittest -v tests.test_record_browser_glow tests.test_record_browser_paint
       - name: Full-render smoke
         env:
           DEMO_SMOKE_NODE_MODULES: ${{ github.workspace }}/node_modules
