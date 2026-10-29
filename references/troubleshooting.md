@@ -157,6 +157,7 @@ Do not patch `executablePath` into the scripts by hand; a re-sync drops the patc
 
 The browser's system libraries are missing. With root: `sudo npx playwright install-deps chromium`.
 Without root, extract the packages somewhere and point `LD_LIBRARY_PATH` at their `usr/lib/x86_64-linux-gnu`.
+Live browser tests skip with this missing-library reason until Chromium's dependencies are installed.
 
 ### Final video larger than 10 MB
 

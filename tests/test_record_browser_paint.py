@@ -10,23 +10,17 @@ import threading
 import unittest
 from pathlib import Path
 
+from tests.live_browser import requires_live_browser
+
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..", "assets", "scripts")
 NODE = shutil.which("node")
-
-
-def _playwright_available():
-    if not NODE or not shutil.which("ffmpeg"):
-        return False
-    probe = subprocess.run([NODE, "-e", "require.resolve('playwright')"], cwd=SCRIPTS,
-                           capture_output=True)
-    return probe.returncode == 0
 
 
 DARK = """<!doctype html><html style="background:#0a0705"><body><p>static page</p></body></html>"""
 WHITE = """<!doctype html><html style="background:#ffffff"><body>white page</body></html>"""
 
 
-@unittest.skipUnless(_playwright_available(), "needs node + playwright + ffmpeg")
+@requires_live_browser
 class RecordBrowserPaint(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

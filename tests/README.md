@@ -15,7 +15,10 @@ python3 -m unittest discover -s tests
 | `test_make_music.py` | `make-music.sh`: bed length follows the video in every mode, library failure falls back with a WARNING (needs ffmpeg + bash) |
 | `test_glow_check.py` | `glow_check.mjs`: glow/highlight selector must match exactly one node (needs node) |
 | `test_paint_guard.py` | `paint_guard.mjs`: static page repaint keepalive and blank-white frame detection |
-| `test_record_browser_paint.py` | `record-browser.mjs`: paint guard keepalive and retry integration |
+| `live_browser.py` | Shared node, ffmpeg, Playwright and Chromium launch probe; `DEMO_REQUIRE_LIVE=1` makes missing prerequisites fail live test classes |
+| `test_live_browser.py` | Live browser skip/required behavior and shared-library message |
+| `test_record_browser_glow.py` | `record-browser.mjs`: live glow recording and selector integration |
+| `test_record_browser_paint.py` | `record-browser.mjs`: live paint guard keepalive and retry integration |
 | `test_build_copy_list.py` | Build and quick-capture script copy lists include their sibling imports (Python stdlib only) |
 | `test_dry_run_plan_measured.py` | `dry-run-plan.measured_vo`: `--plan` prefers a current `vo-words.json` over the word-count estimate |
 | `test_verify_final.py` | `verify-final.py`: duration, audio, white-flash and caption checks (real clips need ffmpeg) |
